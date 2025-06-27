@@ -1,0 +1,350 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Brand {
+  id         Int      @id @default(autoincrement())
+  name       String   @unique
+  logo_url   String?
+  status     Boolean  @default(true)
+  created_at DateTime @default(now())
+
+  products Product[]
+
+  @@map("brands")
+}
+
+model Category {
+  id            Int      @id @default(autoincrement())
+  title         String?
+  parent_id     Int?
+  position      Int?
+  status        Boolean  @default(true)
+  frontDisplay  String?
+  appIcon       String?
+  webImage      String?
+  mainImage     String?
+  filterTypeId  Int?
+  featureTypeId Int?
+   // ✅ NEW MANY-TO-MANY RELATION
+  categoryFeatures CategoryFeature[]
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+// ✅ Add this reverse relation block 👇
+  productsAsMenu            Product[] @relation("mainCategory")
+  productsAsSubCategory     Product[] @relation("SubCategory")
+  productsAsListSubCategory Product[] @relation("ListSubCategory")
+
+
+
+  @@map("categories")
+}
+
+model Color {
+  id       Int     @id @default(autoincrement())
+  label    String
+  hex_code String?
+  status   Boolean @default(true)
+
+  products Product[] @relation("ProductMainColor")
+  variants Variant[]
+
+  @@map("colors")
+}
+
+model SizeUOM {
+  id     Int     @id @default(autoincrement())
+  title  String  @unique
+  status Boolean @default(true)
+
+  variants Variant[]
+  products Product[] @relation("ProductSizeRelation")
+
+  @@map("size_uom")
+}
+
+model FeatureType {
+  id   Int    @id @default(autoincrement())
+  name String @unique
+
+  features ProductFeature[]
+  categoryFeatures CategoryFeature[]
+
+  @@map("featuretype")
+}
+
+model FilterType {
+  id   Int    @id @default(autoincrement())
+  name String @unique
+
+  filters ProductFilter[]
+
+  @@map("filtertype")
+}
+
+model Product {
+  id             Int     @id @default(autoincrement())
+  sku            String  @unique
+  title          String
+  description    String?
+  brandId        Int
+  mainCategoryId            Int?
+  mainCategory              Category? @relation("mainCategory", fields: [mainCategoryId], references: [id])
+
+  subCategoryId     Int?
+  subCategory       Category? @relation("SubCategory", fields: [subCategoryId], references: [id])
+
+  listSubCategoryId Int?
+  listSubCategory   Category? @relation("ListSubCategory", fields: [listSubCategoryId], references: [id])
+
+  colorId        Int?
+  stock          Int
+  sizeId         Int?
+  mrp            Float
+  sellingPrice   Float
+  height         Float?
+  width          Float?
+  length         Float?
+  searchKeywords String?
+
+  brand          Brand            @relation(fields: [brandId], references: [id])
+  color          Color?           @relation("ProductMainColor", fields: [colorId], references: [id])
+  size           SizeUOM?         @relation("ProductSizeRelation", fields: [sizeId], references: [id])
+  variants       Variant[]
+  images         Image[]
+  productDetails ProductDetails?
+  features       ProductFeature[]
+  filters        ProductFilter[]
+  status         Boolean          @default(true)
+  created_at     DateTime         @default(now())
+  updated_at     DateTime         @updatedAt
+
+  @@map("products")
+}
+
+model Variant {
+  id           Int    @id @default(autoincrement())
+  productId    Int
+  sku          String
+  stock        Int
+  mrp          Float
+  sellingPrice Float
+  sizeId       Int?
+  colorId      Int?
+
+  product Product  @relation(fields: [productId], references: [id])
+  size    SizeUOM? @relation(fields: [sizeId], references: [id])
+  color   Color?   @relation(fields: [colorId], references: [id])
+  images  Image[]
+
+  @@map("product_variants")
+}
+
+model ProductDetails {
+  id        Int     @id @default(autoincrement())
+  productId Int     @unique
+  product   Product @relation(fields: [productId], references: [id])
+
+  model           String?
+  weight          Float?
+  sla             Int?
+  deliveryCharges Float?
+
+  @@map("product_details")
+}
+
+model Image {
+  id        Int     @id @default(autoincrement())
+  productId Int?
+  variantId Int?
+  url       String
+  alt       String?
+  isMain    Boolean @default(false)
+
+  product Product? @relation(fields: [productId], references: [id])
+  variant Variant? @relation(fields: [variantId], references: [id])
+
+  @@map("product_images")
+}
+
+model ProductFeature {
+  id        Int    @id @default(autoincrement())
+  productId Int
+  featureId Int
+  value     String
+
+  product Product     @relation(fields: [productId], references: [id])
+  feature FeatureType @relation(fields: [featureId], references: [id])
+
+  @@map("product_features")
+}
+
+model ProductFilter {
+  id        Int    @id @default(autoincrement())
+  productId Int
+  filterId  Int
+  value     String
+
+  product Product    @relation(fields: [productId], references: [id])
+  filter  FilterType @relation(fields: [filterId], references: [id])
+
+  CategoryFilters CategoryFilter[]
+  ProductValues   ProductFilterValue[]
+  
+  @@map("product_filters")
+}
+
+model Warranty {
+  id              Int     @id @default(autoincrement())
+  duration_months Int?
+  description     String?
+
+  @@map("warranties")
+}
+
+model Style {
+  id     Int     @id @default(autoincrement())
+  name   String
+  status Boolean @default(true)
+
+  @@map("styles")
+}
+
+model Finish {
+  id     Int     @id @default(autoincrement())
+  name   String
+  status Boolean @default(true)
+
+  @@map("finishes")
+}
+
+model RoomType {
+  id     Int     @id @default(autoincrement())
+  name   String
+  status Boolean @default(true)
+
+  @@map("room_types")
+}
+
+model Material {
+  id     Int     @id @default(autoincrement())
+  name   String
+  status Boolean @default(true)
+
+  @@map("materials")
+}
+
+model ShippingPartner {
+  id            Int     @id @default(autoincrement())
+  name          String?
+  api_key       String?
+  contact_email String?
+  status        Boolean @default(true)
+
+  @@map("shipping_partners")
+}
+
+model TaxRule {
+  id            Int          @id @default(autoincrement())
+  name          String?
+  percentage    Float?
+  applicable_on ApplicableOn @default(MRP)
+
+  @@map("tax_rules")
+}
+
+enum ApplicableOn {
+  MRP
+  Discounted
+}
+
+model Vendor {
+  id            Int     @id @default(autoincrement())
+  name          String
+  contact_email String?
+  phone         String?
+  address       String?
+  status        Boolean @default(true)
+
+  @@map("vendors")
+}
+
+model Slider {
+  id         Int      @id @default(autoincrement())
+  title      String
+  image_url  String
+  link       String?
+  priority   Int      @default(0)
+  status     Boolean  @default(true)
+  created_at DateTime @default(now())
+
+  @@map("sliders")
+}
+
+model SliderRight {
+  id        Int      @id @default(1)
+  image1    String
+  image2    String
+  image3    String
+  updatedAt DateTime @updatedAt
+
+  @@map("slider_right")
+}
+
+model MainCategoryPromotion {
+  id            Int      @id @default(autoincrement())
+  title         String
+  position      String
+  display_count Int
+  display_rows  Int
+  image_url     String
+  status        Boolean  @default(true)
+  created_at    DateTime @default(now())
+
+  @@map("main_category_promotions")
+}
+
+model AssemblyType {
+  id   Int    @id @default(autoincrement())
+  name String
+
+  @@map("assembly_types")
+}
+
+model CategoryFeature {
+  id         Int         @id @default(autoincrement())
+  categoryId Int
+  featureId  Int
+
+  category   Category    @relation(fields: [categoryId], references: [id])
+  feature    FeatureType @relation(fields: [featureId], references: [id])
+
+  @@unique([categoryId, featureId]) // Prevent duplicates
+  @@map("category_features")
+}
+
+
+
+model CategoryFilter {
+  id         Int      @id @default(autoincrement())
+  categoryId Int
+  filterId   Int
+  filter     ProductFilter @relation(fields: [filterId], references: [id])
+}
+
+model ProductFilterValue {
+  id        Int      @id @default(autoincrement())
+  productId Int
+  filterId  Int
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  filter ProductFilter @relation(fields: [filterId], references: [id])
+}
