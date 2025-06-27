@@ -6,16 +6,21 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
-   app.useStaticAssets(join(__dirname, '..', '..', 'uploads'), {
-  prefix: '/uploads/',
-});
 
-  app.enableCors();
-    app.enableCors({
-    origin: [process.env.FRONTEND_URL],
+  // Serve static files from /uploads
+  app.useStaticAssets(join(__dirname, '..', '..', 'uploads'), {
+    prefix: '/uploads/',
+  });
+
+  // Enable CORS for your frontend
+  app.enableCors({
+    origin: process.env.FRONTEND_URL || '*', // fallback if not set
     credentials: true,
   });
-  await app.listen(process.env.PORT , "0.0.0.0");
-  console.log(`Server running on http://localhost:${process.env.PORT || 4006}`);
+
+  const port = process.env.PORT || 4005;
+  await app.listen(port, '0.0.0.0');
+
+  console.log(`🚀 Server running on http://0.0.0.0:${port}`);
 }
 bootstrap();
