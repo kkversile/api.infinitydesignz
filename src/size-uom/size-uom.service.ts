@@ -1,11 +1,19 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class SizeUOMService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService) {}
 
-  create(data: any) {
+  async create(data: { title: string; status?: boolean }) {
+    const existing = await this.prisma.sizeUOM.findFirst({
+      where: { title: data.title },
+    });
+
+    if (existing) {
+      throw new BadRequestException('Size UOM with the same title already exists.');
+    }
+
     return this.prisma.sizeUOM.create({ data });
   }
 
