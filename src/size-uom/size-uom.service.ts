@@ -25,7 +25,20 @@ export class SizeUOMService {
     return this.prisma.sizeUOM.findUnique({ where: { id } });
   }
 
-  update(id: number, data: any) {
+async update(id: number, data: any) {
+    if (data.title) {
+      const existing = await this.prisma.sizeUOM.findFirst({
+        where: {
+          title: data.title,
+          NOT: { id },
+        },
+      });
+
+      if (existing) {
+        throw new BadRequestException('Another Size UOM with the same title already exists.');
+      }
+    }
+
     return this.prisma.sizeUOM.update({ where: { id }, data });
   }
 

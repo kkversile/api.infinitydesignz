@@ -25,7 +25,20 @@ export class ColorsService {
     return this.prisma.color.findUnique({ where: { id } });
   }
 
-  update(id: number, data: any) {
+async update(id: number, data: any) {
+    if (data.label) {
+      const existing = await this.prisma.color.findFirst({
+        where: {
+          label: data.label,
+          NOT: { id },
+        },
+      });
+
+      if (existing) {
+        throw new BadRequestException('Another color with the same label already exists.');
+      }
+    }
+
     return this.prisma.color.update({ where: { id }, data });
   }
 

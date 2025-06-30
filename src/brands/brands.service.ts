@@ -27,7 +27,20 @@ export class BrandsService {
     return this.prisma.brand.findUnique({ where: { id } });
   }
 
-  update(id: number, data: any) {
+async update(id: number, data: any) {
+    if (data.name) {
+      const existing = await this.prisma.brand.findFirst({
+        where: {
+          name: data.name,
+          NOT: { id }, // Exclude the current brand from duplicate check
+        },
+      });
+
+      if (existing) {
+        throw new BadRequestException('Another brand with the same name already exists.');
+      }
+    }
+
     return this.prisma.brand.update({ where: { id }, data });
   }
 

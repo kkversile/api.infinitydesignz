@@ -1,11 +1,19 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
 export class VariantsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  create(data: any) {
+ async create(data: any) {
+    const existing = await this.prisma.variant.findFirst({
+      where: { sku: data.sku },
+    });
+
+    if (existing) {
+      throw new BadRequestException('A variant with this SKU already exists.');
+    }
+
     return this.prisma.variant.create({ data });
   }
 
@@ -17,8 +25,22 @@ export class VariantsService {
     return this.prisma.variant.findUnique({ where: { id } });
   }
 
-  update(id: number, data: any) {
-    return this.prisma.variant.update({ where: { id }, data });
+   async update(id: number, data: any) {
+    const existing = await this.prisma.variant.findFirst({
+      where: {
+        sku: data.sku,
+        NOT: { id }, // Exclude current variant from the check
+      },
+    });
+
+    if (existing) {
+      throw new BadRequestException('Another variant with this SKU already exists.');
+    }
+
+    return this.prisma.variant.update({
+      where: { id },
+      data,
+    });
   }
 
   remove(id: number) {
