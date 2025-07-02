@@ -1,0 +1,1 @@
+export const CATEGORY_IMAGE_PATH = '/uploads/categories/';
