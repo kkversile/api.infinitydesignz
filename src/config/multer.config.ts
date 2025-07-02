@@ -4,8 +4,8 @@ import * as fs from 'fs';
 
 export const multerCategoryStorage = diskStorage({
   destination: (req, file, cb) => {
-    const uploadPath = join(__dirname, '..', '..', 'uploads', 'categories');
-    fs.mkdirSync(uploadPath, { recursive: true }); // Ensures the folder exists
+    const uploadPath = join(process.cwd(), 'uploads', 'categories'); // ✅ root-safe
+    fs.mkdirSync(uploadPath, { recursive: true });
     cb(null, uploadPath);
   },
   filename: (req, file, cb) => {
