@@ -18,7 +18,7 @@ export class CategoriesService {
 
   async create(data: any, files: any = {}) {
     const parentId = data.parent_id ? Number(data.parent_id) : null;
-    const status = Boolean(data.status);
+    const status = data.status === 'true' || data.status === true;
 
     const existing = await this.prisma.category.findFirst({
       where: {
@@ -61,58 +61,50 @@ export class CategoriesService {
     return formatCategoryResponse(category);
   }
 
-  async findAll() {
-    const allCategories = await this.prisma.category.findMany({
-      include: {
-        categoryFeatures: {
-          include: { feature: true },
-        },
+async findAll() {
+  // Step 1: Fetch all parent categories
+  const categories = await this.prisma.category.findMany({
+    orderBy: { id: 'desc' },
+    include: {
+      categoryFeatures: {
+        include: { feature: true },
       },
-    });
+    },
+  });
 
-    const categoryMap = new Map<number, any>();
+  // Step 2: Fetch children and organize them under their parent
+  const childMap = new Map<number, any[]>();
+  const ids = categories.map(c => c.id);
 
-    for (const category of allCategories) {
-      categoryMap.set(category.id, {
-        ...category,
-        featureTypes: category.categoryFeatures.map((cf) => cf.feature),
-        children: [],
-      });
+  const children = await this.prisma.category.findMany({
+    where: { parent_id: { in: ids } },
+    orderBy: { id: 'asc' },
+  });
+
+  for (const child of children) {
+    if (!childMap.has(child.parent_id)) {
+      childMap.set(child.parent_id, []);
     }
-
-    for (const category of allCategories) {
-      if (category.parent_id !== null && categoryMap.has(category.parent_id)) {
-        const parent = categoryMap.get(category.parent_id);
-        parent.children.push({
-          id: category.id,
-          title: category.title,
-          children: [],
-        });
-      }
-    }
-
-    const populateChildren = (node: any) => {
-      node.children = node.children.map((child: any) => {
-        const fullChild = categoryMap.get(child.id);
-        return {
-          id: fullChild.id,
-          title: fullChild.title,
-          children: populateChildren(fullChild).children,
-        };
-      });
-      return node;
-    };
-
-    const result = [];
-    for (const [id, cat] of categoryMap.entries()) {
-      if (cat.parent_id === null) {
-        const populated = populateChildren(cat);
-        result.push(formatCategoryResponse(populated));
-      }
-    }
-
-    return result;
+    childMap.get(child.parent_id).push(child);
   }
+
+  // Step 3: Format and build response
+  const formatted = categories.map((category) => {
+    const children = childMap.get(category.id) || [];
+    return formatCategoryResponse({
+      ...category,
+      featureTypes: category.categoryFeatures.map((cf) => cf.feature),
+      children: children.map((child) => ({
+        id: child.id,
+        title: child.title,
+        children: [], // Not nesting grandchildren here
+      })),
+    });
+  });
+
+  return formatted;
+}
+
 
   async findOne(id: number) {
     const fetchCategoryWithChildren = async (
@@ -170,7 +162,8 @@ export class CategoriesService {
       data.parent_id !== undefined && data.parent_id !== null
         ? Number(data.parent_id)
         : null;
-    const status = Boolean(data.status);
+    const status = data.status === 'true' || data.status === true;
+
 
     const existing = await this.prisma.category.findFirst({
       where: {
