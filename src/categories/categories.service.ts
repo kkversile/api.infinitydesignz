@@ -62,7 +62,7 @@ export class CategoriesService {
   }
 
 async findAll() {
-  // Step 1: Fetch all parent categories
+  // Step 1: Fetch all  categories
   const categories = await this.prisma.category.findMany({
     orderBy: { id: 'desc' },
     include: {
@@ -157,18 +157,49 @@ async findAll() {
     return await fetchCategoryWithChildren(id, true, []);
   }
 
-  async update(id: number, data: any, files: any) {
-    const parentId =
-      data.parent_id !== undefined && data.parent_id !== null
-        ? Number(data.parent_id)
-        : null;
-    const status = data.status === 'true' || data.status === true;
+ async update(id: number, data: any, files: any) {
+  const updatePayload: any = {
+    ...(data.title !== undefined && { title: data.title.trim() }),
+    ...(data.status !== undefined && {
+      status: data.status === 'true' || data.status === true,
+    }),
+    ...(data.parent_id !== undefined && {
+      parent_id: data.parent_id !== null ? Number(data.parent_id) : null,
+    }),
+    ...(data.position !== undefined && {
+      position: data.position !== null ? Number(data.position) : null,
+    }),
+    ...(data.frontDisplay !== undefined && {
+      frontDisplay: data.frontDisplay === 'true' || data.frontDisplay === true,
+    }),
+    ...(data.filterTypeId !== undefined && {
+      filterTypeId: data.filterTypeId !== null ? Number(data.filterTypeId) : null,
+    }),
+    ...(data.featureTypeId !== undefined && {
+      featureTypeId: data.featureTypeId !== null ? Number(data.featureTypeId) : null,
+    }),
+    ...(files.mainImage?.[0] && {
+      mainImage: files.mainImage[0].filename,
+    }),
+    ...(files.appIcon?.[0] && {
+      appIcon: files.appIcon[0].filename,
+    }),
+    ...(files.webImage?.[0] && {
+      webImage: files.webImage[0].filename,
+    }),
+  };
 
+  // Optional: Prevent duplicate title + parent_id conflict
+  if (data.title !== undefined) {
+    const checkParentId =
+      data.parent_id !== undefined
+        ? (data.parent_id !== null ? Number(data.parent_id) : null)
+        : undefined;
 
     const existing = await this.prisma.category.findFirst({
       where: {
         title: data.title,
-        parent_id: parentId,
+        ...(checkParentId !== undefined && { parent_id: checkParentId }),
         NOT: { id },
       },
     });
@@ -178,28 +209,18 @@ async findAll() {
         'Category with same title already exists under selected parent.',
       );
     }
+  }
 
+  const updatedCategory = await this.prisma.category.update({
+    where: { id },
+    data: updatePayload,
+  });
+
+  // ✅ Update feature mappings only if featureTypeIds is sent
+  if (data.featureTypeIds !== undefined) {
     const featureTypeIds: number[] = Array.isArray(data.featureTypeIds)
-      ? data.featureTypeIds.map((id: any) => Number(id))
+      ? data.featureTypeIds.map((fid: any) => Number(fid))
       : [];
-
-    const updatedCategory = await this.prisma.category.update({
-      where: { id },
-      data: {
-        title: data.title,
-        status,
-        parent_id: parentId,
-        ...(files.mainImage?.[0] && {
-          mainImage: files.mainImage[0].filename,
-        }),
-        ...(files.appIcon?.[0] && {
-          appIcon: files.appIcon[0].filename,
-        }),
-        ...(files.webImage?.[0] && {
-          webImage: files.webImage[0].filename,
-        }),
-      },
-    });
 
     await this.prisma.categoryFeature.deleteMany({ where: { categoryId: id } });
 
@@ -212,9 +233,10 @@ async findAll() {
         skipDuplicates: true,
       });
     }
-
-    return formatCategoryResponse(updatedCategory);
   }
+
+  return formatCategoryResponse(updatedCategory);
+}
 
   remove(id: number) {
     return this.prisma.category.delete({ where: { id } });

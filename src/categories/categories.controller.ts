@@ -8,7 +8,7 @@ import {
   Post,
   Body,
   Param,
-  Put,
+  Patch,
   Delete,
   UseGuards,
   UseInterceptors,
@@ -57,7 +57,7 @@ export class CategoriesController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Put(':id')
+  @Patch(':id')
   @UseInterceptors(
     FileFieldsInterceptor([
       { name: 'mainImage', maxCount: 1 },
