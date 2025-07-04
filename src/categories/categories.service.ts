@@ -233,6 +233,22 @@ async findOne(id: number) {
   return formatCategoryResponse(updatedCategory);
 }
 
+async updateStatusBulk(ids: number[], status: boolean) {
+  if (!Array.isArray(ids) || ids.length === 0) {
+    throw new BadRequestException('IDs must be a non-empty array.');
+  }
+
+  const updated = await this.prisma.category.updateMany({
+    where: { id: { in: ids } },
+    data: { status },
+  });
+
+  return {
+    message: `Updated ${updated.count} categories' status to ${status}`,
+    updatedCount: updated.count,
+  };
+}
+
   remove(id: number) {
     return this.prisma.category.delete({ where: { id } });
   }

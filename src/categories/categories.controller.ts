@@ -13,11 +13,13 @@ import {
   UseGuards,
   UseInterceptors,
   UploadedFiles,
+  BadRequestException
 } from '@nestjs/common';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CategoriesService } from './categories.service';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import { parseBooleanStatus } from '../utils/validate-status'; // adjust path
 
 @Controller('categories')
 export class CategoriesController {
@@ -41,6 +43,8 @@ export class CategoriesController {
       webImage?: Array<Express.Multer.File>;
     }
   ) {
+       body.status = parseBooleanStatus(body.status); // ✅
+
     return this.service.create(body, files);
   }
 
@@ -55,9 +59,19 @@ export class CategoriesController {
   findOne(@Param('id') id: string) {
     return this.service.findOne(+id);
   }
+@Patch('bulk-update-status')
+@UseGuards(JwtAuthGuard)
+async updateStatusBulk(
+  @Body() body: { ids: number[]; status: boolean }
+) {
+
+ const status = parseBooleanStatus(body.status); // ✅
+ 
+  return this.service.updateStatusBulk(body.ids, body.status);
+}
 
   @UseGuards(JwtAuthGuard)
-  @Patch(':id')
+  @Patch('update/:id')
   @UseInterceptors(
     FileFieldsInterceptor([
       { name: 'mainImage', maxCount: 1 },
@@ -76,8 +90,11 @@ export class CategoriesController {
         webImage?: Array<Express.Multer.File>;
       }
   ) {
+         body.status = parseBooleanStatus(body.status); // ✅
     return this.service.update(+id, body, files);
   }
+
+
 
   @UseGuards(JwtAuthGuard)
   @Delete(':id')
