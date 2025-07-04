@@ -105,57 +105,52 @@ async findAll() {
   return formatted;
 }
 
+async findOne(id: number) {
+  const fetchCategoryWithChildren = async (
+    categoryId: number,
+    includeFeatures = false,
+    parentTrail: { id: number; title: string }[] = []
+  ): Promise<any> => {
+    const category = await this.prisma.category.findUnique({
+      where: { id: categoryId },
+      include: includeFeatures
+        ? {
+            categoryFeatures: {
+              include: { feature: true },
+            },
+          }
+        : undefined,
+    });
 
-  async findOne(id: number) {
-    const fetchCategoryWithChildren = async (
-      categoryId: number,
-      includeFeatures = false,
-      parentTrail: { id: number; title: string }[] = []
-    ): Promise<any> => {
-      const category = await this.prisma.category.findUnique({
-        where: { id: categoryId },
-        include: includeFeatures
-          ? {
-              categoryFeatures: {
-                include: { feature: true },
-              },
-            }
-          : undefined,
-      });
+    if (!category) return null;
 
-      if (!category) return null;
+    const breadcrumb = [
+      ...parentTrail,
+      { id: category.id, title: category.title },
+    ];
 
-      const breadcrumb = [
-        ...parentTrail,
-        { id: category.id, title: category.title },
-      ];
+    const children = await this.prisma.category.findMany({
+      where: { parent_id: categoryId },
+    });
 
-      const children = await this.prisma.category.findMany({
-        where: { parent_id: categoryId },
-      });
+    const nestedChildren = await Promise.all(
+      children.map((child) =>
+        fetchCategoryWithChildren(child.id, false, breadcrumb)
+      )
+    );
 
-      const nestedChildren = await Promise.all(
-        children.map((child) =>
-          fetchCategoryWithChildren(child.id, false, breadcrumb)
-        )
-      );
+    return formatCategoryResponse({
+      ...category,
+      ...(includeFeatures && {
+        featureTypes: category.categoryFeatures.map((cf) => cf.feature),
+      }),
+      breadcrumb,
+      children: nestedChildren,
+    });
+  };
 
-      return {
-        id: category.id,
-        title: category.title,
-        mainImage: formatImage(category.mainImage),
-        appIcon: formatImage(category.appIcon),
-        webImage: formatImage(category.webImage),
-        ...(includeFeatures && {
-          featureTypes: category.categoryFeatures.map((cf) => cf.feature),
-        }),
-        breadcrumb,
-        children: nestedChildren,
-      };
-    };
-
-    return await fetchCategoryWithChildren(id, true, []);
-  }
+  return await fetchCategoryWithChildren(id, true, []);
+}
 
  async update(id: number, data: any, files: any) {
   const updatePayload: any = {
