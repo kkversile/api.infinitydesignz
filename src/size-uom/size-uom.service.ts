@@ -25,7 +25,7 @@ export class SizeUOMService {
     return this.prisma.sizeUOM.findUnique({ where: { id } });
   }
 
-async update(id: number, data: any) {
+async update(id: number, data: Partial<{ title: string; status: boolean }>) {
     if (data.title) {
       const existing = await this.prisma.sizeUOM.findFirst({
         where: {
@@ -39,7 +39,10 @@ async update(id: number, data: any) {
       }
     }
 
-    return this.prisma.sizeUOM.update({ where: { id }, data });
+    return this.prisma.sizeUOM.update({
+      where: { id },
+      data,
+    });
   }
 
   remove(id: number) {

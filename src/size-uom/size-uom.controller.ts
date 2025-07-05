@@ -1,8 +1,9 @@
 import {
-  Controller, Get, Post, Body, Param, Put, Delete, UseGuards
+  Controller, Get, Post, Body, Param, Patch, Delete, UseGuards
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { SizeUOMService } from './size-uom.service';
+import { parseBooleanStatus } from '../utils/validate-status'; // adjust path
 
 @Controller('size-uom')
 export class SizeUOMController {
@@ -11,6 +12,7 @@ export class SizeUOMController {
   @UseGuards(JwtAuthGuard)
   @Post()
   create(@Body() dto: any) {
+     dto.status = parseBooleanStatus(dto.status); // ✅ sanitize
     return this.service.create(dto);
   }
 
@@ -27,8 +29,9 @@ export class SizeUOMController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Put(':id')
+  @Patch(':id') // 
   update(@Param('id') id: string, @Body() dto: any) {
+    dto.status = parseBooleanStatus(dto.status);
     return this.service.update(+id, dto);
   }
 
