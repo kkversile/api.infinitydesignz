@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Body, Param, Put, Delete, UseGuards
+  Controller, Get, Post, Body, Param, Patch, Delete, UseGuards
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ColorsService } from './colors.service';
@@ -27,7 +27,7 @@ export class ColorsController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Put(':id')
+  @Patch(':id')
   update(@Param('id') id: string, @Body() dto: any) {
     return this.service.update(+id, dto);
   }

@@ -17,10 +17,13 @@ export class SizeUOMService {
     return this.prisma.sizeUOM.create({ data });
   }
 
-  findAll() {
-    return this.prisma.sizeUOM.findMany();
-  }
-
+findAll() {
+  return this.prisma.sizeUOM.findMany({
+    orderBy: {
+      id: 'desc',
+    },
+  });
+}
   findOne(id: number) {
     return this.prisma.sizeUOM.findUnique({ where: { id } });
   }

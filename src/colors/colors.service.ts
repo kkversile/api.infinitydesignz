@@ -17,15 +17,18 @@ export class ColorsService {
     return this.prisma.color.create({ data });
   }
 
-  findAll() {
-    return this.prisma.color.findMany();
-  }
-
+findAll() {
+  return this.prisma.color.findMany({
+    orderBy: {
+      id: 'desc',
+    },
+  });
+}
   findOne(id: number) {
     return this.prisma.color.findUnique({ where: { id } });
   }
 
-async update(id: number, data: any) {
+async update(id: number, data: Partial<{ label: string;hex_code:string, status: boolean }>) {
     if (data.label) {
       const existing = await this.prisma.color.findFirst({
         where: {

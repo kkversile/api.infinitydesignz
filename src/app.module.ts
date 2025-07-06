@@ -18,6 +18,7 @@ import { ProductsModule } from './products/products.module';
 
 import { MainCategoryPromotionModule } from './main-category-promotion/main-category-promotion.module';
 import { FeatureTypesModule } from './feature-types/feature-types.module';
+import { CommonStatusModule } from './common-status/common-status.module';
 
 
 
@@ -37,7 +38,8 @@ import { FeatureTypesModule } from './feature-types/feature-types.module';
     ColorsModule,
     MainCategoryPromotionModule,
     ProductsModule,
-    FeatureTypesModule, // ✅ Now included in AppModule
+    FeatureTypesModule,
+    CommonStatusModule,
   ],
 })
 export class AppModule {}
