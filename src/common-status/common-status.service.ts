@@ -9,7 +9,8 @@ export class CommonStatusService {
   private readonly statusUpdatableEntities: Record<string, keyof PrismaService> = {
     'size-uom': 'sizeUOM',
     'categories': 'category',
-    'color': 'color',
+    'colors': 'color',
+    'brands':'brand'
     // add more here if needed
   };
 
