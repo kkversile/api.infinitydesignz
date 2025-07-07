@@ -19,30 +19,42 @@ export class BrandsService {
   }
 
 
-  findAll() {
-    return this.prisma.brand.findMany();
-  }
+
+findAll() {
+  return this.prisma.brand.findMany({
+    orderBy: {
+      id: 'desc',
+    },
+  });
+}
 
   findOne(id: number) {
     return this.prisma.brand.findUnique({ where: { id } });
   }
 
-async update(id: number, data: any) {
-    if (data.name) {
-      const existing = await this.prisma.brand.findFirst({
-        where: {
-          name: data.name,
-          NOT: { id }, // Exclude the current brand from duplicate check
-        },
-      });
+async update(
+  id: number,
+  data: Partial<{ name: string; status: boolean }>
+) {
+  if (data.name) {
+    const existing = await this.prisma.brand.findFirst({
+      where: {
+        name: data.name,
+        NOT: { id }, // Exclude current brand by ID
+      },
+    });
 
-      if (existing) {
-        throw new BadRequestException('Another brand with the same name already exists.');
-      }
+    if (existing) {
+      throw new BadRequestException('Another brand with the same name already exists.');
     }
-
-    return this.prisma.brand.update({ where: { id }, data });
   }
+
+  return this.prisma.brand.update({
+    where: { id },
+    data,
+  });
+}
+
 
   remove(id: number) {
     return this.prisma.brand.delete({ where: { id } });
