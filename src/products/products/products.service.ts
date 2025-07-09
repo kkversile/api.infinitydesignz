@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException  } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateProductsDto } from './dto';
 
@@ -7,26 +7,65 @@ export class ProductsService {
   constructor(private readonly prisma: PrismaService) {}
 
 async create(data: CreateProductsDto) {
-    const {
-      productDetails,
-      variants,
-      brandId,
-      mainCategoryId,
-      subCategoryId,
-      listSubCategoryId,
-      sizeId,
-      colorId,
-      sku,
-      ...rest
-    } = data;
+  const {
+    productDetails,
+    variants,
+    brandId,
+    mainCategoryId,
+    subCategoryId,
+    listSubCategoryId,
+    sizeId,
+    colorId,
+    sku,
+    ...rest
+  } = data;
 
-    // ✅ Check if a product with the same SKU already exists
-    const existing = await this.prisma.product.findUnique({ where: { sku } });
-    if (existing) {
-      throw new BadRequestException(`Product with SKU '${sku}' already exists.`);
+  // ✅ Check for duplicate SKU
+  const existing = await this.prisma.product.findUnique({ where: { sku } });
+  if (existing) {
+    throw new BadRequestException(`Product with SKU '${sku}' already exists.`);
+  }
+
+  // ✅ Validate top-level foreign key relations
+  const relationChecks = [
+    { id: brandId, label: 'Brand', model: this.prisma.brand },
+    { id: mainCategoryId, label: 'Main Category', model: this.prisma.category },
+    { id: subCategoryId, label: 'Sub Category', model: this.prisma.category },
+    { id: listSubCategoryId, label: 'List Sub Category', model: this.prisma.category },
+    { id: sizeId, label: 'Size', model: this.prisma.sizeUOM },
+    { id: colorId, label: 'Color', model: this.prisma.color },
+  ];
+
+  for (const rel of relationChecks) {
+    if (rel.id) {
+       const exists = await (rel.model as any).findUnique({ where: { id: rel.id } });
+      if (!exists) {
+        throw new BadRequestException(`${rel.label} with ID '${rel.id}' does not exist.`);
+      }
     }
+  }
 
-    return this.prisma.product.create({
+  // ✅ Validate nested variant sizeId & colorId
+  if (variants?.length) {
+    for (const [index, variant] of variants.entries()) {
+      if (variant.sizeId) {
+        const size = await this.prisma.sizeUOM.findUnique({ where: { id: variant.sizeId } });
+        if (!size) {
+          throw new BadRequestException(`Variant[${index}] has invalid Size ID '${variant.sizeId}'.`);
+        }
+      }
+      if (variant.colorId) {
+        const color = await this.prisma.color.findUnique({ where: { id: variant.colorId } });
+        if (!color) {
+          throw new BadRequestException(`Variant[${index}] has invalid Color ID '${variant.colorId}'.`);
+        }
+      }
+    }
+  }
+
+  // ✅ Create Product
+  try {
+    return await this.prisma.product.create({
       data: {
         sku,
         ...rest,
@@ -62,10 +101,16 @@ async create(data: CreateProductsDto) {
           : undefined,
       },
     });
+  } catch (error) {
+    throw new InternalServerErrorException('Something went wrong while creating the product.');
   }
+}
 
   async findAll() {
     return this.prisma.product.findMany({
+       orderBy: {
+      id: 'desc', // ✅ Latest products first
+    },
       include: {
         mainCategory: true,
         subCategory: true,
