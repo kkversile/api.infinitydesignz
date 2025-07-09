@@ -19,7 +19,7 @@ import { ProductsModule } from './products/products.module';
 import { MainCategoryPromotionModule } from './main-category-promotion/main-category-promotion.module';
 import { FeatureTypesModule } from './feature-types/feature-types.module';
 import { CommonStatusModule } from './common-status/common-status.module';
-
+import { FilterTypesModule } from './filter-types/filter-types.module';
 
 
 
@@ -39,6 +39,7 @@ import { CommonStatusModule } from './common-status/common-status.module';
     MainCategoryPromotionModule,
     ProductsModule,
     FeatureTypesModule,
+    FilterTypesModule,
     CommonStatusModule,
   ],
 })

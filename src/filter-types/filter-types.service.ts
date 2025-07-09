@@ -9,9 +9,14 @@ export class FilterTypesService {
     return this.prisma.filterType.create({ data });
   }
 
-  findAll() {
-    return this.prisma.filterType.findMany();
-  }
+
+ findAll() {
+  return this.prisma.filterType.findMany({
+    orderBy: {
+      id: 'desc',
+    },
+  });
+}
 
   findOne(id: number) {
     return this.prisma.filterType.findUnique({ where: { id } });

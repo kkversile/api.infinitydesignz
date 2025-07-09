@@ -9,9 +9,13 @@ export class FeatureTypesService {
     return this.prisma.featureType.create({ data });
   }
 
-  findAll() {
-    return this.prisma.featureType.findMany();
-  }
+ findAll() {
+  return this.prisma.featureType.findMany({
+    orderBy: {
+      id: 'desc',
+    },
+  });
+}
 
   findOne(id: number) {
     return this.prisma.featureType.findUnique({ where: { id } });
