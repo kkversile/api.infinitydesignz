@@ -10,7 +10,9 @@ export class CommonStatusService {
     'size-uom': 'sizeUOM',
     'categories': 'category',
     'colors': 'color',
-    'brands':'brand'
+    'brands':'brand',
+    'products':'product',
+    
     // add more here if needed
   };
 
