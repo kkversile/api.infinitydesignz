@@ -20,13 +20,13 @@ import { MainCategoryPromotionModule } from './main-category-promotion/main-cate
 import { FeatureTypesModule } from './feature-types/feature-types.module';
 import { CommonStatusModule } from './common-status/common-status.module';
 import { FilterTypesModule } from './filter-types/filter-types.module';
-
+import { FeatureSetsModule } from './feature-sets/feature-sets.module';     
+import { FeatureListsModule } from './feature-lists/feature-lists.module';
 
 
 
 @Module({
-  imports: [
-       
+  imports: [      
 
     PrismaModule,
     AuthModule,
@@ -39,6 +39,8 @@ import { FilterTypesModule } from './filter-types/filter-types.module';
     MainCategoryPromotionModule,
     ProductsModule,
     FeatureTypesModule,
+    FeatureSetsModule,     // ✅ Added here
+    FeatureListsModule,    // ✅ Added here
     FilterTypesModule,
     CommonStatusModule,
   ],

@@ -20,28 +20,26 @@ model Brand {
 }
 
 model Category {
-  id            Int      @id @default(autoincrement())
-  title         String?
-  parent_id     Int?
-  position      Int?
-  status        Boolean  @default(true)
-  frontDisplay  String?
-  appIcon       String?
-  webImage      String?
-  mainImage     String?
-  filterTypeId  Int?
-  featureTypeId Int?
-   // ✅ NEW MANY-TO-MANY RELATION
+  id               Int               @id @default(autoincrement())
+  title            String?
+  parent_id        Int?
+  position         Int?
+  status           Boolean           @default(true)
+  frontDisplay     String?
+  appIcon          String?
+  webImage         String?
+  mainImage        String?
+  filterTypeId     Int?
+  featureTypeId    Int?
+  // ✅ NEW MANY-TO-MANY RELATION
   categoryFeatures CategoryFeature[]
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-// ✅ Add this reverse relation block 👇
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+  // ✅ Add this reverse relation block 👇
   productsAsMenu            Product[] @relation("mainCategory")
   productsAsSubCategory     Product[] @relation("SubCategory")
   productsAsListSubCategory Product[] @relation("ListSubCategory")
-
-
 
   @@map("categories")
 }
@@ -73,8 +71,9 @@ model FeatureType {
   id   Int    @id @default(autoincrement())
   name String @unique
 
-  features ProductFeature[]
+  features         ProductFeature[]
   categoryFeatures CategoryFeature[]
+  FeatureSet       FeatureSet[]
 
   @@map("featuretype")
 }
@@ -89,16 +88,16 @@ model FilterType {
 }
 
 model Product {
-  id             Int     @id @default(autoincrement())
-  sku            String  @unique
+  id             Int       @id @default(autoincrement())
+  sku            String    @unique
   title          String
   description    String?
   brandId        Int
-  mainCategoryId            Int?
-  mainCategory              Category? @relation("mainCategory", fields: [mainCategoryId], references: [id])
+  mainCategoryId Int?
+  mainCategory   Category? @relation("mainCategory", fields: [mainCategoryId], references: [id])
 
-  subCategoryId     Int?
-  subCategory       Category? @relation("SubCategory", fields: [subCategoryId], references: [id])
+  subCategoryId Int?
+  subCategory   Category? @relation("SubCategory", fields: [subCategoryId], references: [id])
 
   listSubCategoryId Int?
   listSubCategory   Category? @relation("ListSubCategory", fields: [listSubCategoryId], references: [id])
@@ -196,7 +195,7 @@ model ProductFilter {
 
   CategoryFilters CategoryFilter[]
   ProductValues   ProductFilterValue[]
-  
+
   @@map("product_filters")
 }
 
@@ -318,21 +317,19 @@ model AssemblyType {
 }
 
 model CategoryFeature {
-  id         Int         @id @default(autoincrement())
+  id         Int @id @default(autoincrement())
   categoryId Int
   featureId  Int
 
-  category   Category    @relation(fields: [categoryId], references: [id])
-  feature    FeatureType @relation(fields: [featureId], references: [id])
+  category Category    @relation(fields: [categoryId], references: [id])
+  feature  FeatureType @relation(fields: [featureId], references: [id])
 
   @@unique([categoryId, featureId]) // Prevent duplicates
   @@map("category_features")
 }
 
-
-
 model CategoryFilter {
-  id         Int      @id @default(autoincrement())
+  id         Int           @id @default(autoincrement())
   categoryId Int
   filterId   Int
   filter     ProductFilter @relation(fields: [filterId], references: [id])
@@ -347,4 +344,27 @@ model ProductFilterValue {
   updatedAt DateTime @updatedAt
 
   filter ProductFilter @relation(fields: [filterId], references: [id])
+}
+
+model FeatureSet {
+  id            Int           @id @default(autoincrement())
+  title         String
+  priority      Int           @default(0)
+  status        Boolean       @default(true)
+  featureTypeId Int
+  featureType   FeatureType   @relation(fields: [featureTypeId], references: [id])
+  featureLists  FeatureList[]
+
+  @@map("feature_sets")
+}
+
+model FeatureList {
+  id           Int        @id @default(autoincrement())
+  label        String
+  priority     Int        @default(0)
+  status       Boolean    @default(true)
+  featureSetId Int
+  featureSet   FeatureSet @relation(fields: [featureSetId], references: [id])
+
+  @@map("feature_lists")
 }

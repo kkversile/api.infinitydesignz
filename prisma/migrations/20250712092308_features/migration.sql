@@ -1,9 +1,15 @@
-/*
-  Warnings:
+-- DropIndex
+DROP INDEX `category_features_featureId_fkey` ON `category_features`;
 
-  - You are about to drop the column `categoryId` on the `products` table. All the data in the column will be lost.
+-- DropIndex
+DROP INDEX `CategoryFilter_filterId_fkey` ON `categoryfilter`;
 
-*/
+-- DropIndex
+DROP INDEX `feature_lists_featureSetId_fkey` ON `feature_lists`;
+
+-- DropIndex
+DROP INDEX `feature_sets_featureTypeId_fkey` ON `feature_sets`;
+
 -- DropIndex
 DROP INDEX `product_features_featureId_fkey` ON `product_features`;
 
@@ -32,22 +38,25 @@ DROP INDEX `product_variants_productId_fkey` ON `product_variants`;
 DROP INDEX `product_variants_sizeId_fkey` ON `product_variants`;
 
 -- DropIndex
-DROP INDEX `products_brandId_fkey` ON `products`;
+DROP INDEX `ProductFilterValue_filterId_fkey` ON `productfiltervalue`;
 
 -- DropIndex
-DROP INDEX `products_categoryId_fkey` ON `products`;
+DROP INDEX `products_brandId_fkey` ON `products`;
 
 -- DropIndex
 DROP INDEX `products_colorId_fkey` ON `products`;
 
 -- DropIndex
+DROP INDEX `products_listSubCategoryId_fkey` ON `products`;
+
+-- DropIndex
+DROP INDEX `products_mainCategoryId_fkey` ON `products`;
+
+-- DropIndex
 DROP INDEX `products_sizeId_fkey` ON `products`;
 
--- AlterTable
-ALTER TABLE `products` DROP COLUMN `categoryId`,
-    ADD COLUMN `listSubCategoryId` INTEGER NULL,
-    ADD COLUMN `mainCategoryId` INTEGER NULL,
-    ADD COLUMN `subCategoryId` INTEGER NULL;
+-- DropIndex
+DROP INDEX `products_subCategoryId_fkey` ON `products`;
 
 -- AddForeignKey
 ALTER TABLE `products` ADD CONSTRAINT `products_mainCategoryId_fkey` FOREIGN KEY (`mainCategoryId`) REFERENCES `categories`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
@@ -96,3 +105,21 @@ ALTER TABLE `product_filters` ADD CONSTRAINT `product_filters_productId_fkey` FO
 
 -- AddForeignKey
 ALTER TABLE `product_filters` ADD CONSTRAINT `product_filters_filterId_fkey` FOREIGN KEY (`filterId`) REFERENCES `filtertype`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `category_features` ADD CONSTRAINT `category_features_categoryId_fkey` FOREIGN KEY (`categoryId`) REFERENCES `categories`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `category_features` ADD CONSTRAINT `category_features_featureId_fkey` FOREIGN KEY (`featureId`) REFERENCES `featuretype`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `CategoryFilter` ADD CONSTRAINT `CategoryFilter_filterId_fkey` FOREIGN KEY (`filterId`) REFERENCES `product_filters`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `ProductFilterValue` ADD CONSTRAINT `ProductFilterValue_filterId_fkey` FOREIGN KEY (`filterId`) REFERENCES `product_filters`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `feature_sets` ADD CONSTRAINT `feature_sets_featureTypeId_fkey` FOREIGN KEY (`featureTypeId`) REFERENCES `featuretype`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `feature_lists` ADD CONSTRAINT `feature_lists_featureSetId_fkey` FOREIGN KEY (`featureSetId`) REFERENCES `feature_sets`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
