@@ -5,8 +5,7 @@ import { VariantsController } from './variants/variants.controller';
 import { VariantsService } from './variants/variants.service';
 import { ImagesController } from './images/images.controller';
 import { ImagesService } from './images/images.service';
-import { ProductDetailsController } from './product-details/product-details.controller';
-import { ProductDetailsService } from './product-details/product-details.service';
+
 import { ProductFiltersController } from './product-filters/product-filters.controller';
 import { ProductFiltersService } from './product-filters/product-filters.service';
 import { ProductFeaturesController } from './product-features/product-features.controller';
@@ -18,7 +17,6 @@ import { PrismaService } from '../prisma/prisma.service';
     ProductsController,
     VariantsController,
     ImagesController,
-    ProductDetailsController,
     ProductFiltersController,
     ProductFeaturesController
   ],
@@ -26,7 +24,6 @@ import { PrismaService } from '../prisma/prisma.service';
     ProductsService,
     VariantsService,
     ImagesService,
-    ProductDetailsService,
     ProductFiltersService,
     PrismaService,
     ProductFeaturesService
