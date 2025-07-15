@@ -75,16 +75,7 @@ model FeatureType {
   categoryFeatures CategoryFeature[]
   FeatureSet       FeatureSet[]
 
-  @@map("featuretype")
-}
-
-model FilterType {
-  id   Int    @id @default(autoincrement())
-  name String @unique
-
-  filters ProductFilter[]
-
-  @@map("filtertype")
+  @@map("feature_types")
 }
 
 model Product {
@@ -367,4 +358,37 @@ model FeatureList {
   featureSet   FeatureSet @relation(fields: [featureSetId], references: [id])
 
   @@map("feature_lists")
+}
+
+model FilterType {
+  id   Int    @id @default(autoincrement())
+  name String @unique
+
+  filters   ProductFilter[]
+  FilterSet FilterSet[]
+
+  @@map("filter_types")
+}
+
+model FilterSet {
+  id           Int          @id @default(autoincrement())
+  title        String
+  priority     Int          @default(0)
+  status       Boolean      @default(true)
+  filterTypeId Int
+  filterType   FilterType   @relation(fields: [filterTypeId], references: [id])
+  filterLists  FilterList[]
+
+  @@map("filter_sets")
+}
+
+model FilterList {
+  id          Int       @id @default(autoincrement())
+  label       String
+  priority    Int       @default(0)
+  status      Boolean   @default(true)
+  filterSetId Int
+  filterSet   FilterSet @relation(fields: [filterSetId], references: [id])
+
+  @@map("filter_lists")
 }

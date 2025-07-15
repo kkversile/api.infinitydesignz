@@ -19,10 +19,11 @@ import { ProductsModule } from './products/products.module';
 import { MainCategoryPromotionModule } from './main-category-promotion/main-category-promotion.module';
 import { FeatureTypesModule } from './feature-types/feature-types.module';
 import { CommonStatusModule } from './common-status/common-status.module';
-import { FilterTypesModule } from './filter-types/filter-types.module';
 import { FeatureSetsModule } from './feature-sets/feature-sets.module';     
 import { FeatureListsModule } from './feature-lists/feature-lists.module';
-
+import { FilterTypesModule } from './filter-types/filter-types.module';
+import { FilterSetsModule } from './filter-sets/filter-sets.module';      // ✅ NEW
+import { FilterListsModule } from './filter-lists/filter-lists.module';  // ✅ NEW
 
 
 @Module({
@@ -42,6 +43,8 @@ import { FeatureListsModule } from './feature-lists/feature-lists.module';
     FeatureSetsModule,     // ✅ Added here
     FeatureListsModule,    // ✅ Added here
     FilterTypesModule,
+    FilterSetsModule,      // ✅ Registered
+    FilterListsModule,     // ✅ Registered
     CommonStatusModule,
   ],
 })

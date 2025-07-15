@@ -9,7 +9,6 @@ export class FilterTypesService {
     return this.prisma.filterType.create({ data });
   }
 
-
  findAll() {
   return this.prisma.filterType.findMany({
     orderBy: {
