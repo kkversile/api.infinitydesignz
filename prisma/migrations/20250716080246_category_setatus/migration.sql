@@ -11,25 +11,6 @@ CREATE TABLE `brands` (
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- CreateTable
-CREATE TABLE `categories` (
-    `id` INTEGER NOT NULL AUTO_INCREMENT,
-    `title` VARCHAR(191) NULL,
-    `parent_id` INTEGER NULL,
-    `position` INTEGER NULL,
-    `status` BOOLEAN NOT NULL DEFAULT true,
-    `frontDisplay` VARCHAR(191) NULL,
-    `appIcon` VARCHAR(191) NULL,
-    `webImage` VARCHAR(191) NULL,
-    `mainImage` VARCHAR(191) NULL,
-    `filterTypeId` INTEGER NULL,
-    `featureTypeId` INTEGER NULL,
-    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    `updatedAt` DATETIME(3) NOT NULL,
-
-    PRIMARY KEY (`id`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
--- CreateTable
 CREATE TABLE `colors` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
     `label` VARCHAR(191) NOT NULL,
@@ -46,51 +27,6 @@ CREATE TABLE `size_uom` (
     `status` BOOLEAN NOT NULL DEFAULT true,
 
     UNIQUE INDEX `size_uom_title_key`(`title`),
-    PRIMARY KEY (`id`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
--- CreateTable
-CREATE TABLE `featuretype` (
-    `id` INTEGER NOT NULL AUTO_INCREMENT,
-    `name` VARCHAR(191) NOT NULL,
-
-    UNIQUE INDEX `featuretype_name_key`(`name`),
-    PRIMARY KEY (`id`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
--- CreateTable
-CREATE TABLE `filtertype` (
-    `id` INTEGER NOT NULL AUTO_INCREMENT,
-    `name` VARCHAR(191) NOT NULL,
-
-    UNIQUE INDEX `filtertype_name_key`(`name`),
-    PRIMARY KEY (`id`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
--- CreateTable
-CREATE TABLE `products` (
-    `id` INTEGER NOT NULL AUTO_INCREMENT,
-    `sku` VARCHAR(191) NOT NULL,
-    `title` VARCHAR(191) NOT NULL,
-    `description` VARCHAR(191) NULL,
-    `brandId` INTEGER NOT NULL,
-    `mainCategoryId` INTEGER NULL,
-    `subCategoryId` INTEGER NULL,
-    `listSubCategoryId` INTEGER NULL,
-    `colorId` INTEGER NULL,
-    `stock` INTEGER NOT NULL,
-    `sizeId` INTEGER NULL,
-    `mrp` DOUBLE NOT NULL,
-    `sellingPrice` DOUBLE NOT NULL,
-    `height` DOUBLE NULL,
-    `width` DOUBLE NULL,
-    `length` DOUBLE NULL,
-    `searchKeywords` VARCHAR(191) NULL,
-    `status` BOOLEAN NOT NULL DEFAULT true,
-    `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    `updated_at` DATETIME(3) NOT NULL,
-
-    UNIQUE INDEX `products_sku_key`(`sku`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -129,26 +65,6 @@ CREATE TABLE `product_images` (
     `url` VARCHAR(191) NOT NULL,
     `alt` VARCHAR(191) NULL,
     `isMain` BOOLEAN NOT NULL DEFAULT false,
-
-    PRIMARY KEY (`id`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
--- CreateTable
-CREATE TABLE `product_features` (
-    `id` INTEGER NOT NULL AUTO_INCREMENT,
-    `productId` INTEGER NOT NULL,
-    `featureId` INTEGER NOT NULL,
-    `value` VARCHAR(191) NOT NULL,
-
-    PRIMARY KEY (`id`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
--- CreateTable
-CREATE TABLE `product_filters` (
-    `id` INTEGER NOT NULL AUTO_INCREMENT,
-    `productId` INTEGER NOT NULL,
-    `filterId` INTEGER NOT NULL,
-    `value` VARCHAR(191) NOT NULL,
 
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -278,33 +194,45 @@ CREATE TABLE `assembly_types` (
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- CreateTable
-CREATE TABLE `category_features` (
+CREATE TABLE `categories` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
-    `categoryId` INTEGER NOT NULL,
-    `featureId` INTEGER NOT NULL,
-
-    UNIQUE INDEX `category_features_categoryId_featureId_key`(`categoryId`, `featureId`),
-    PRIMARY KEY (`id`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
--- CreateTable
-CREATE TABLE `CategoryFilter` (
-    `id` INTEGER NOT NULL AUTO_INCREMENT,
-    `categoryId` INTEGER NOT NULL,
-    `filterId` INTEGER NOT NULL,
-
-    PRIMARY KEY (`id`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
--- CreateTable
-CREATE TABLE `ProductFilterValue` (
-    `id` INTEGER NOT NULL AUTO_INCREMENT,
-    `productId` INTEGER NOT NULL,
-    `filterId` INTEGER NOT NULL,
-    `value` VARCHAR(191) NOT NULL,
+    `title` VARCHAR(191) NOT NULL,
+    `status` BOOLEAN NOT NULL DEFAULT true,
+    `parentId` INTEGER NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
 
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `products` (
+    `id` INTEGER NOT NULL AUTO_INCREMENT,
+    `sku` VARCHAR(191) NOT NULL,
+    `title` VARCHAR(191) NOT NULL,
+    `description` VARCHAR(191) NULL,
+    `brandId` INTEGER NOT NULL,
+    `categoryId` INTEGER NOT NULL,
+    `colorId` INTEGER NULL,
+    `sizeId` INTEGER NULL,
+    `mrp` DOUBLE NOT NULL,
+    `sellingPrice` DOUBLE NOT NULL,
+    `stock` INTEGER NOT NULL,
+    `searchKeywords` VARCHAR(191) NULL,
+    `status` BOOLEAN NOT NULL DEFAULT true,
+    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `updatedAt` DATETIME(3) NOT NULL,
+
+    UNIQUE INDEX `products_sku_key`(`sku`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `feature_types` (
+    `id` INTEGER NOT NULL AUTO_INCREMENT,
+    `name` VARCHAR(191) NOT NULL,
+
+    UNIQUE INDEX `feature_types_name_key`(`name`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -330,23 +258,75 @@ CREATE TABLE `feature_lists` (
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
--- AddForeignKey
-ALTER TABLE `products` ADD CONSTRAINT `products_mainCategoryId_fkey` FOREIGN KEY (`mainCategoryId`) REFERENCES `categories`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+-- CreateTable
+CREATE TABLE `category_features` (
+    `id` INTEGER NOT NULL AUTO_INCREMENT,
+    `categoryId` INTEGER NOT NULL,
+    `featureListId` INTEGER NOT NULL,
 
--- AddForeignKey
-ALTER TABLE `products` ADD CONSTRAINT `products_subCategoryId_fkey` FOREIGN KEY (`subCategoryId`) REFERENCES `categories`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+    UNIQUE INDEX `category_features_categoryId_featureListId_key`(`categoryId`, `featureListId`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
--- AddForeignKey
-ALTER TABLE `products` ADD CONSTRAINT `products_listSubCategoryId_fkey` FOREIGN KEY (`listSubCategoryId`) REFERENCES `categories`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+-- CreateTable
+CREATE TABLE `product_features` (
+    `id` INTEGER NOT NULL AUTO_INCREMENT,
+    `productId` INTEGER NOT NULL,
+    `featureListId` INTEGER NOT NULL,
+    `value` VARCHAR(191) NULL,
 
--- AddForeignKey
-ALTER TABLE `products` ADD CONSTRAINT `products_brandId_fkey` FOREIGN KEY (`brandId`) REFERENCES `brands`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
--- AddForeignKey
-ALTER TABLE `products` ADD CONSTRAINT `products_colorId_fkey` FOREIGN KEY (`colorId`) REFERENCES `colors`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+-- CreateTable
+CREATE TABLE `filter_types` (
+    `id` INTEGER NOT NULL AUTO_INCREMENT,
+    `name` VARCHAR(191) NOT NULL,
 
--- AddForeignKey
-ALTER TABLE `products` ADD CONSTRAINT `products_sizeId_fkey` FOREIGN KEY (`sizeId`) REFERENCES `size_uom`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+    UNIQUE INDEX `filter_types_name_key`(`name`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `filter_sets` (
+    `id` INTEGER NOT NULL AUTO_INCREMENT,
+    `title` VARCHAR(191) NOT NULL,
+    `priority` INTEGER NOT NULL DEFAULT 0,
+    `status` BOOLEAN NOT NULL DEFAULT true,
+    `filterTypeId` INTEGER NOT NULL,
+
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `filter_lists` (
+    `id` INTEGER NOT NULL AUTO_INCREMENT,
+    `label` VARCHAR(191) NOT NULL,
+    `priority` INTEGER NOT NULL DEFAULT 0,
+    `status` BOOLEAN NOT NULL DEFAULT true,
+    `filterSetId` INTEGER NOT NULL,
+
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `category_filters` (
+    `id` INTEGER NOT NULL AUTO_INCREMENT,
+    `categoryId` INTEGER NOT NULL,
+    `filterListId` INTEGER NOT NULL,
+
+    UNIQUE INDEX `category_filters_categoryId_filterListId_key`(`categoryId`, `filterListId`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `product_filters` (
+    `id` INTEGER NOT NULL AUTO_INCREMENT,
+    `productId` INTEGER NOT NULL,
+    `filterListId` INTEGER NOT NULL,
+
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- AddForeignKey
 ALTER TABLE `product_variants` ADD CONSTRAINT `product_variants_productId_fkey` FOREIGN KEY (`productId`) REFERENCES `products`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -367,31 +347,52 @@ ALTER TABLE `product_images` ADD CONSTRAINT `product_images_productId_fkey` FORE
 ALTER TABLE `product_images` ADD CONSTRAINT `product_images_variantId_fkey` FOREIGN KEY (`variantId`) REFERENCES `product_variants`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `product_features` ADD CONSTRAINT `product_features_productId_fkey` FOREIGN KEY (`productId`) REFERENCES `products`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `categories` ADD CONSTRAINT `categories_parentId_fkey` FOREIGN KEY (`parentId`) REFERENCES `categories`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `product_features` ADD CONSTRAINT `product_features_featureId_fkey` FOREIGN KEY (`featureId`) REFERENCES `featuretype`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `products` ADD CONSTRAINT `products_brandId_fkey` FOREIGN KEY (`brandId`) REFERENCES `brands`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `product_filters` ADD CONSTRAINT `product_filters_productId_fkey` FOREIGN KEY (`productId`) REFERENCES `products`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `products` ADD CONSTRAINT `products_categoryId_fkey` FOREIGN KEY (`categoryId`) REFERENCES `categories`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `product_filters` ADD CONSTRAINT `product_filters_filterId_fkey` FOREIGN KEY (`filterId`) REFERENCES `filtertype`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `products` ADD CONSTRAINT `products_colorId_fkey` FOREIGN KEY (`colorId`) REFERENCES `colors`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `products` ADD CONSTRAINT `products_sizeId_fkey` FOREIGN KEY (`sizeId`) REFERENCES `size_uom`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `feature_sets` ADD CONSTRAINT `feature_sets_featureTypeId_fkey` FOREIGN KEY (`featureTypeId`) REFERENCES `feature_types`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `feature_lists` ADD CONSTRAINT `feature_lists_featureSetId_fkey` FOREIGN KEY (`featureSetId`) REFERENCES `feature_sets`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `category_features` ADD CONSTRAINT `category_features_categoryId_fkey` FOREIGN KEY (`categoryId`) REFERENCES `categories`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `category_features` ADD CONSTRAINT `category_features_featureId_fkey` FOREIGN KEY (`featureId`) REFERENCES `featuretype`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `category_features` ADD CONSTRAINT `category_features_featureListId_fkey` FOREIGN KEY (`featureListId`) REFERENCES `feature_lists`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `CategoryFilter` ADD CONSTRAINT `CategoryFilter_filterId_fkey` FOREIGN KEY (`filterId`) REFERENCES `product_filters`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `product_features` ADD CONSTRAINT `product_features_productId_fkey` FOREIGN KEY (`productId`) REFERENCES `products`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `ProductFilterValue` ADD CONSTRAINT `ProductFilterValue_filterId_fkey` FOREIGN KEY (`filterId`) REFERENCES `product_filters`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `product_features` ADD CONSTRAINT `product_features_featureListId_fkey` FOREIGN KEY (`featureListId`) REFERENCES `feature_lists`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `feature_sets` ADD CONSTRAINT `feature_sets_featureTypeId_fkey` FOREIGN KEY (`featureTypeId`) REFERENCES `featuretype`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `filter_sets` ADD CONSTRAINT `filter_sets_filterTypeId_fkey` FOREIGN KEY (`filterTypeId`) REFERENCES `filter_types`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE `feature_lists` ADD CONSTRAINT `feature_lists_featureSetId_fkey` FOREIGN KEY (`featureSetId`) REFERENCES `feature_sets`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `filter_lists` ADD CONSTRAINT `filter_lists_filterSetId_fkey` FOREIGN KEY (`filterSetId`) REFERENCES `filter_sets`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `category_filters` ADD CONSTRAINT `category_filters_categoryId_fkey` FOREIGN KEY (`categoryId`) REFERENCES `categories`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `category_filters` ADD CONSTRAINT `category_filters_filterListId_fkey` FOREIGN KEY (`filterListId`) REFERENCES `filter_lists`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `product_filters` ADD CONSTRAINT `product_filters_productId_fkey` FOREIGN KEY (`productId`) REFERENCES `products`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `product_filters` ADD CONSTRAINT `product_filters_filterListId_fkey` FOREIGN KEY (`filterListId`) REFERENCES `filter_lists`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;

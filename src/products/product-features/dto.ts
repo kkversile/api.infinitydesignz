@@ -1,5 +1,5 @@
 export class CreateProductFeatureDto {
   productId: number;
-  featureId: number;
+  featureListId: number;
   value: string;
 }

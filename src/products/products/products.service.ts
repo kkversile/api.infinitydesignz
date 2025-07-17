@@ -1,200 +1,210 @@
-import { BadRequestException, Injectable, InternalServerErrorException  } from '@nestjs/common';
+// src/products/products.service.ts
+
+import {
+  BadRequestException,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateProductsDto } from './dto';
+import { CreateProductsDto, UpdateProductsDto } from './dto';
 
 @Injectable()
 export class ProductsService {
   constructor(private readonly prisma: PrismaService) {}
 
-async create(data: CreateProductsDto) {
-  const {
-    productDetails,
-    variants,
-    brandId,
-    mainCategoryId,
-    subCategoryId,
-    listSubCategoryId,
-    sizeId,
-    colorId,
-    sku,
-    ...rest
-  } = data;
+  async create(dto: CreateProductsDto) {
+    const {
+      sku,
+      title,
+      description,
+      brandId,
+      categoryId,
+      colorId,
+      sizeId,
+      stock,
+      mrp,
+      sellingPrice,
+      searchKeywords,
+      status = true,
+      productDetails,
+      variants = [],
+    } = dto;
 
-  // ✅ Check for duplicate SKU
-  const existing = await this.prisma.product.findUnique({ where: { sku } });
-  if (existing) {
-    throw new BadRequestException(`Product with SKU '${sku}' already exists.`);
-  }
+    // duplicate SKU?
+    if (await this.prisma.product.findUnique({ where: { sku } })) {
+      throw new BadRequestException(`Product with SKU '${sku}' already exists.`);
+    }
 
-  // ✅ Validate top-level foreign key relations
-  const relationChecks = [
-    { id: brandId, label: 'Brand', model: this.prisma.brand },
-    { id: mainCategoryId, label: 'Main Category', model: this.prisma.category },
-    { id: subCategoryId, label: 'Sub Category', model: this.prisma.category },
-    { id: listSubCategoryId, label: 'List Sub Category', model: this.prisma.category },
-    { id: sizeId, label: 'Size', model: this.prisma.sizeUOM },
-    { id: colorId, label: 'Color', model: this.prisma.color },
-  ];
-
-  for (const rel of relationChecks) {
-    if (rel.id) {
-       const exists = await (rel.model as any).findUnique({ where: { id: rel.id } });
-      if (!exists) {
-        throw new BadRequestException(`${rel.label} with ID '${rel.id}' does not exist.`);
+    // validate FKs
+    const checks = [
+      { id: brandId,    label: 'Brand',    model: this.prisma.brand },
+      { id: categoryId, label: 'Category', model: this.prisma.category },
+      { id: sizeId,     label: 'Size',     model: this.prisma.sizeUOM },
+      { id: colorId,    label: 'Color',    model: this.prisma.color },
+    ];
+    for (const { id, label, model } of checks) {
+      if (id != null && !(await (model as any).findUnique({ where: { id } }))) {
+        throw new BadRequestException(`${label} with ID '${id}' does not exist.`);
       }
     }
-  }
 
-  // ✅ Validate nested variant sizeId & colorId
-  if (variants?.length) {
-    for (const [index, variant] of variants.entries()) {
-      if (variant.sizeId) {
-        const size = await this.prisma.sizeUOM.findUnique({ where: { id: variant.sizeId } });
-        if (!size) {
-          throw new BadRequestException(`Variant[${index}] has invalid Size ID '${variant.sizeId}'.`);
-        }
-      }
-      if (variant.colorId) {
-        const color = await this.prisma.color.findUnique({ where: { id: variant.colorId } });
-        if (!color) {
-          throw new BadRequestException(`Variant[${index}] has invalid Color ID '${variant.colorId}'.`);
-        }
-      }
+    try {
+      return await this.prisma.product.create({
+        data: {
+          sku,
+          title,
+          description,
+          searchKeywords,
+          status,
+          stock,
+          mrp,
+          sellingPrice,
+
+          brand:    { connect: { id: brandId } },
+          category: { connect: { id: categoryId } },
+          ...(sizeId  != null && { size:  { connect: { id: sizeId  } } }),
+          ...(colorId != null && { color: { connect: { id: colorId } } }),
+
+          productDetails: productDetails
+            ? {
+                create: {
+                  model:            productDetails.model,
+                  weight:           productDetails.weight,
+                  sla:              productDetails.sla,
+                  deliveryCharges:  productDetails.deliveryCharges,
+                },
+              }
+            : undefined,
+
+          variants: variants.length
+            ? {
+                create: variants.map(v => ({
+                  sku:          v.sku,
+                  stock:        v.stock,
+                  mrp:          v.mrp,
+                  sellingPrice: v.sellingPrice,
+                  ...(v.sizeId  != null && { size:  { connect: { id: v.sizeId  } } }),
+                  ...(v.colorId != null && { color: { connect: { id: v.colorId } } }),
+                })),
+              }
+            : undefined,
+        },
+      });
+    } catch (err) {
+      throw new InternalServerErrorException('Error creating product');
     }
   }
-
-  // ✅ Create Product
-  try {
-    return await this.prisma.product.create({
-      data: {
-        sku,
-        ...rest,
-        brand: { connect: { id: brandId } },
-        mainCategory: mainCategoryId ? { connect: { id: mainCategoryId } } : undefined,
-        subCategory: subCategoryId ? { connect: { id: subCategoryId } } : undefined,
-        listSubCategory: listSubCategoryId ? { connect: { id: listSubCategoryId } } : undefined,
-        size: sizeId ? { connect: { id: sizeId } } : undefined,
-        color: colorId ? { connect: { id: colorId } } : undefined,
-
-        productDetails: productDetails
-          ? {
-              create: {
-                model: productDetails.model ?? '',
-                weight: productDetails.weight,
-                sla: productDetails.sla,
-                deliveryCharges: productDetails.deliveryCharges,
-              },
-            }
-          : undefined,
-
-        variants: variants?.length
-          ? {
-              create: variants.map((v) => ({
-                sku: v.sku,
-                stock: v.stock,
-                mrp: v.mrp,
-                sellingPrice: v.sellingPrice,
-                size: v.sizeId ? { connect: { id: v.sizeId } } : undefined,
-                color: v.colorId ? { connect: { id: v.colorId } } : undefined,
-              })),
-            }
-          : undefined,
-      },
-    });
-  } catch (error) {
-    throw new InternalServerErrorException('Something went wrong while creating the product.');
-  }
-}
 
   async findAll() {
     return this.prisma.product.findMany({
-       orderBy: {
-      id: 'desc', // ✅ Latest products first
-    },
+      orderBy: { id: 'desc' },
       include: {
-        mainCategory: true,
-        subCategory: true,
-        listSubCategory: true,
-        brand: true,
-        color: true,
-        size: true,
-        productDetails: true,
-        variants: {
+        category: {
           include: {
-            size: true,
-            color: true,
-          },
+            featureType: {
+              include: {
+                featureSets: { include: { featureLists: true } }
+              }
+            },
+            filterType: {
+              include: {
+                filterSets:  { include: { filterLists: true } }
+              }
+            }
+          }
         },
+        brand:          true,
+        color:          true,
+        size:           true,
+        productDetails: true,
+        variants:       { include: { size: true, color: true } },
+        images:         true,
+        filters:        true,
+        features:       true,
       },
     });
   }
 
   async findOne(id: number) {
-    return this.prisma.product.findUnique({
+    const product = await this.prisma.product.findUnique({
       where: { id },
       include: {
-        mainCategory: true,
-        subCategory: true,
-        listSubCategory: true,
-        brand: true,
-        color: true,
-        size: true,
-        productDetails: true,
-        variants: {
+        category: {
           include: {
-            size: true,
-            color: true,
-          },
+            featureType: {
+              include: {
+                featureSets: { include: { featureLists: true } }
+              }
+            },
+            filterType: {
+              include: {
+                filterSets:  { include: { filterLists: true } }
+              }
+            }
+          }
         },
-        images: true,
-        filters: true,
-        features: true,
+        brand:          true,
+        color:          true,
+        size:           true,
+        productDetails: true,
+        variants:       { include: { size: true, color: true } },
+        images:         true,
+        filters:        true,
+        features:       true,
       },
     });
+
+    if (!product) {
+      throw new NotFoundException(`Product with ID ${id} not found.`);
+    }
+
+    return product;
   }
 
   async findIdsOnly() {
     return this.prisma.product.findMany({
-      select: {
-        id: true,
-        title: true,
-      },
+      select: { id: true, title: true },
     });
   }
 
   async exists(id: number) {
-    const product = await this.prisma.product.findUnique({
-      where: { id },
+    const p = await this.prisma.product.findUnique({
+      where:  { id },
       select: { id: true },
     });
-    return !!product;
+    return !!p;
   }
 
-async update(id: number, data: any) {
+  async update(id: number, dto: UpdateProductsDto) {
+    const existing = await this.prisma.product.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException(`Product ${id} not found`);
+    }
+
     const {
-      productDetails,
-      variants,
-      brandId,
-      mainCategoryId,
-      subCategoryId,
-      listSubCategoryId,
-      sizeId,
-      colorId,
       sku,
-      ...rest
-    } = data;
+      title,
+      description,
+      brandId,
+      categoryId,
+      colorId,
+      sizeId,
+      stock,
+      mrp,
+      sellingPrice,
+      searchKeywords,
+      status,
+      productDetails,
+      variants = [],
+    } = dto;
 
-    // ✅ Check SKU duplication on update (excluding current product)
     if (sku) {
-      const existing = await this.prisma.product.findFirst({
-        where: {
-          sku,
-          NOT: { id },
-        },
+      const dup = await this.prisma.product.findFirst({
+        where: { sku, NOT: { id } },
       });
-
-      if (existing) {
-        throw new BadRequestException(`Another product with SKU '${sku}' already exists.`);
+      if (dup) {
+        throw new BadRequestException(`Another product with SKU '${sku}' exists.`);
       }
     }
 
@@ -202,42 +212,56 @@ async update(id: number, data: any) {
       where: { id },
       data: {
         sku,
-        ...rest,
-        brand: { connect: { id: brandId } },
-        mainCategory: mainCategoryId ? { connect: { id: mainCategoryId } } : undefined,
-        subCategory: subCategoryId ? { connect: { id: subCategoryId } } : undefined,
-        listSubCategory: listSubCategoryId ? { connect: { id: listSubCategoryId } } : undefined,
-        size: sizeId ? { connect: { id: sizeId } } : undefined,
-        color: colorId ? { connect: { id: colorId } } : undefined,
+        title,
+        description,
+        searchKeywords,
+        status,
+        stock,
+        mrp,
+        sellingPrice,
+
+        ...(brandId     != null && { brand:    { connect: { id: brandId } } }),
+        ...(categoryId  != null && { category: { connect: { id: categoryId } } }),
+        ...(sizeId      != null && { size:     { connect: { id: sizeId  } } }),
+        ...(colorId     != null && { color:    { connect: { id: colorId } } }),
 
         productDetails: productDetails
           ? {
               upsert: {
-                update: { ...productDetails },
-                create: { ...productDetails },
+                create: {
+                  model:            productDetails.model,
+                  weight:           productDetails.weight,
+                  sla:              productDetails.sla,
+                  deliveryCharges:  productDetails.deliveryCharges,
+                },
+                update: {
+                  model:            productDetails.model,
+                  weight:           productDetails.weight,
+                  sla:              productDetails.sla,
+                  deliveryCharges:  productDetails.deliveryCharges,
+                },
               },
             }
           : undefined,
 
-        variants: variants?.length
+        variants: variants.length
           ? {
               deleteMany: {},
-              create: variants.map((v) => ({
-                sku: v.sku,
-                stock: v.stock,
-                mrp: v.mrp,
+              create: variants.map(v => ({
+                sku:          v.sku,
+                stock:        v.stock,
+                mrp:          v.mrp,
                 sellingPrice: v.sellingPrice,
-                size: v.sizeId ? { connect: { id: v.sizeId } } : undefined,
-                color: v.colorId ? { connect: { id: v.colorId } } : undefined,
+                ...(v.sizeId  != null && { size:  { connect: { id: v.sizeId  } } }),
+                ...(v.colorId != null && { color: { connect: { id: v.colorId } } }),
               })),
             }
           : undefined,
       },
     });
   }
+
   async remove(id: number) {
-    return this.prisma.product.delete({
-      where: { id },
-    });
+    return this.prisma.product.delete({ where: { id } });
   }
 }

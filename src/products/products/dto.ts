@@ -5,9 +5,8 @@ export class CreateProductsDto {
   brandId: number;
 
   // ✅ Updated 3-level category support
-  mainCategoryId?: number;
-  subCategoryId?: number;
-  listSubCategoryId?: number;
+  categoryId: number;
+  
 
   colorId?: number;
   sizeId?: number;
