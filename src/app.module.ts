@@ -24,6 +24,8 @@ import { FeatureListsModule } from './feature-lists/feature-lists.module';
 import { FilterTypesModule } from './filter-types/filter-types.module';
 import { FilterSetsModule } from './filter-sets/filter-sets.module';      // ✅ NEW
 import { FilterListsModule } from './filter-lists/filter-lists.module';  // ✅ NEW
+import { CouponModule } from './coupons/coupon.module';
+import { PriceRangeModule } from './price-range/price-range.module'; // ✅ NEW
 
 
 @Module({
@@ -46,6 +48,8 @@ import { FilterListsModule } from './filter-lists/filter-lists.module';  // ✅ 
     FilterSetsModule,      // ✅ Registered
     FilterListsModule,     // ✅ Registered
     CommonStatusModule,
+    CouponModule,  
+    PriceRangeModule
   ],
 })
 export class AppModule {}

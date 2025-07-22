@@ -7,6 +7,34 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum DeliveryOption {
+  STANDARD
+  EXPRESS
+  STORE_PICKUP
+}
+
+enum PaymentMethod {
+  UPI
+  COD
+  CARD
+  NETBANKING
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
 // ─── BRAND ─────────────────────────────────────────────────────────────────────
 
 model Brand {
@@ -59,10 +87,11 @@ model Variant {
   sizeId       Int?
   colorId      Int?
 
-  product Product  @relation(fields: [productId], references: [id])
-  size    SizeUOM? @relation("VariantSizeRelation", fields: [sizeId], references: [id])
-  color   Color?   @relation("VariantColor", fields: [colorId], references: [id])
-  images  Image[]
+  product   Product     @relation(fields: [productId], references: [id])
+  size      SizeUOM?    @relation("VariantSizeRelation", fields: [sizeId], references: [id])
+  color     Color?      @relation("VariantColor", fields: [colorId], references: [id])
+  images    Image[]
+  OrderItem OrderItem[]
 
   @@map("product_variants")
 }
@@ -273,9 +302,10 @@ model Product {
   features       ProductFeature[]
   filters        ProductFilter[]
 
-  status    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  status    Boolean     @default(true)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  OrderItem OrderItem[]
 
   @@map("products")
 }
@@ -373,4 +403,165 @@ model ProductFilter {
   filterList FilterList @relation(fields: [filterListId], references: [id])
 
   @@map("product_filters")
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String   @unique
+  phone     String?
+  password  String
+  role      UserRole @default(CUSTOMER)
+  status    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders         Order[]
+  addresses      Address[]
+  appliedCoupons AppliedCoupon[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  CUSTOMER
+  ADMIN
+  VENDOR
+  SUPPORT
+}
+
+model Address {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  label     String // "Home", "Office"
+  name      String
+  phone     String
+  address1  String
+  address2  String?
+  city      String
+  state     String
+  zipCode   String
+  createdAt DateTime @default(now())
+
+  user   User    @relation(fields: [userId], references: [id])
+  orders Order[]
+
+  @@map("user_addresses")
+}
+
+model Order {
+  id            Int            @id @default(autoincrement())
+  userId        Int
+  addressId     Int
+  deliveryType  DeliveryOption
+  paymentMethod PaymentMethod
+  couponId      Int? // optional
+  status        OrderStatus    @default(PENDING)
+  subtotal      Float
+  shippingFee   Float
+  gst           Float
+  totalAmount   Float
+  note          String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  user    User        @relation(fields: [userId], references: [id])
+  address Address     @relation(fields: [addressId], references: [id])
+  coupon  Coupon?     @relation(fields: [couponId], references: [id])
+  items   OrderItem[]
+  payment Payment?
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id        Int   @id @default(autoincrement())
+  orderId   Int
+  productId Int
+  variantId Int?
+  quantity  Int   @default(1)
+  price     Float // per item price
+  total     Float // price * quantity
+
+  order   Order    @relation(fields: [orderId], references: [id])
+  product Product  @relation(fields: [productId], references: [id])
+  variant Variant? @relation(fields: [variantId], references: [id])
+
+  @@map("order_items")
+}
+
+model Payment {
+  id            Int           @id @default(autoincrement())
+  orderId       Int           @unique
+  method        PaymentMethod
+  status        PaymentStatus
+  paidAt        DateTime?
+  transactionId String?
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@map("payments")
+}
+
+model PriceRange {
+  id    Int    @id @default(autoincrement())
+  label String @unique   // e.g., "100-500"
+  min   Int
+  max   Int?   // nullable for "5000+"
+
+  coupons Coupon[]
+}
+model Coupon {
+  id             Int        @id @default(autoincrement())
+  code           String     @unique
+  type           CouponType
+  priceType      PriceType
+  value          Float
+  minOrderAmount Float      @default(0)
+  fromDate       DateTime?
+  toDate         DateTime?
+  isActive       Boolean    @default(true)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  // Dynamic condition fields based on coupon type
+  menuId        Int?
+  subMenuId     Int?
+  listSubMenuId Int?
+  brandId       Int?
+  sellerId      Int?
+  url           String?
+  priceRangeId Int?        // renamed from priceId
+  priceRange   PriceRange? @relation(fields: [priceRangeId], references: [id])
+  appliedCoupons AppliedCoupon[]
+  orders         Order[]
+
+  @@map("coupons")
+}
+
+enum CouponType {
+  LIST_SUBMENU
+  BRAND
+  URL
+  PRICE
+  SELLER
+}
+
+enum PriceType {
+  FIXED
+  PERCENTAGE
+}
+
+model AppliedCoupon {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  couponId  Int
+  orderId   Int?
+  appliedAt DateTime @default(now())
+
+  coupon Coupon @relation(fields: [couponId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@unique([userId, couponId]) // prevent reuse unless reset
+  @@map("applied_coupons")
 }
