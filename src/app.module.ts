@@ -26,7 +26,8 @@ import { FilterSetsModule } from './filter-sets/filter-sets.module';      // ✅
 import { FilterListsModule } from './filter-lists/filter-lists.module';  // ✅ NEW
 import { CouponModule } from './coupons/coupon.module';
 import { PriceRangeModule } from './price-range/price-range.module'; // ✅ NEW
-
+import { UsersModule } from './users/users.module'; // ✅ Registered Users Module
+import { WishlistModule } from './wishlist/wishlist.module'; 
 
 @Module({
   imports: [      
@@ -49,7 +50,9 @@ import { PriceRangeModule } from './price-range/price-range.module'; // ✅ NEW
     FilterListsModule,     // ✅ Registered
     CommonStatusModule,
     CouponModule,  
-    PriceRangeModule
+    PriceRangeModule,
+    //UsersModule,
+    WishlistModule,
   ],
 })
 export class AppModule {}
