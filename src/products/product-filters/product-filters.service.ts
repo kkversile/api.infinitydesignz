@@ -10,33 +10,58 @@ interface CreateProductFilterDto {
 export class ProductFiltersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async createOrUpdate(dto: CreateProductFilterDto) {
-    const { productId, filterListId } = dto;
+async createOrUpdate(dto: CreateProductFilterDto) {
+  const { productId, filterListId } = dto;
 
-    try {
-      const existing = await this.prisma.productFilter.findUnique({
-        where: {
-          productId_filterListId: {
-            productId,
-            filterListId,
-          },
-        },
-      });
+  try {
+    // Check existence of foreign keys BEFORE create
+    const productExists = await this.prisma.product.findUnique({
+      where: { id: productId },
+      select: { id: true },
+    });
 
-      if (existing) return existing;
-
-      return await this.prisma.productFilter.create({
-        data: { productId, filterListId },
-      });
-    } catch (error) {
-      if (error.code === 'P2002') {
-        throw new BadRequestException(
-          `ProductFilter with productId ${productId} and filterListId ${filterListId} already exists.`
-        );
-      }
-      throw new BadRequestException(error.message);
+    if (!productExists) {
+      throw new BadRequestException(`Invalid productId does not exists in DB: ${productId}`);
     }
+
+    const filterExists = await this.prisma.filterList.findUnique({
+      where: { id: filterListId },
+      select: { id: true },
+    });
+
+    if (!filterExists) {
+      throw new BadRequestException(`Invalid filterListId does not exists in DB: ${filterListId}`);
+    }
+
+    // Check for existing combination
+    const existing = await this.prisma.productFilter.findUnique({
+      where: {
+        productId_filterListId: {
+          productId,
+          filterListId,
+        },
+      },
+    });
+
+    if (existing) return existing;
+
+    return await this.prisma.productFilter.create({
+      data: { productId, filterListId },
+    });
+  } catch (error) {
+    if (error instanceof BadRequestException) {
+      throw error;
+    }
+
+    if (error.code === 'P2002') {
+      throw new BadRequestException(
+        `ProductFilter with productId ${productId} and filterListId ${filterListId} already exists.`
+      );
+    }
+
+    throw new BadRequestException(error.message);
   }
+}
 
   async createOrUpdateMany(dtos: CreateProductFilterDto[]) {
     const results = await Promise.all(

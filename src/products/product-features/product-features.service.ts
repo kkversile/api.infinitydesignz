@@ -10,6 +10,25 @@ export class ProductFeaturesService {
     const { productId, featureListId, value } = dto;
 
     try {
+      // Check if referenced productId exists
+      const productExists = await this.prisma.product.findUnique({
+        where: { id: productId },
+        select: { id: true },
+      });
+      if (!productExists) {
+        throw new BadRequestException(`Invalid productId does not exists in DB: ${productId}`);
+      }
+
+      // Check if referenced featureListId exists
+      const featureExists = await this.prisma.featureList.findUnique({
+        where: { id: featureListId },
+        select: { id: true },
+      });
+      if (!featureExists) {
+        throw new BadRequestException(`Invalid featureListId does not exists in DB: ${featureListId}`);
+      }
+
+      // Check if combination already exists
       const existing = await this.prisma.productFeature.findUnique({
         where: {
           productId_featureListId: { productId, featureListId },
@@ -25,7 +44,7 @@ export class ProductFeaturesService {
         });
       }
 
-      return this.prisma.productFeature.create({
+      return await this.prisma.productFeature.create({
         data: {
           productId,
           featureListId,
@@ -33,13 +52,14 @@ export class ProductFeaturesService {
         },
       });
     } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
       if (error.code === 'P2002') {
-        // Unique constraint violation (from Prisma)
         throw new BadRequestException(
           `ProductFeature with productId ${productId} and featureListId ${featureListId} already exists.`
         );
       }
-      // Fallback: rethrow if it's not a handled error
       throw new BadRequestException(error.message);
     }
   }
@@ -63,7 +83,9 @@ export class ProductFeaturesService {
       });
     } catch (error) {
       if (error.code === 'P2002') {
-        throw new BadRequestException(`Duplicate entry for update: ${JSON.stringify(dto)}`);
+        throw new BadRequestException(
+          `Duplicate entry for update: ${JSON.stringify(dto)}`
+        );
       }
       throw new BadRequestException(error.message);
     }
