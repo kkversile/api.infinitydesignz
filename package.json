@@ -7,7 +7,7 @@
     "start:dev": "nest start --watch"
   },
   "prisma": {
-    "seed": "ts-node prisma/seed.price-range.ts"
+    "seed": "ts-node prisma/seed.ts"
   },
   "dependencies": {
     "@nestjs/common": "^9.0.0",

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
 interface CreateProductFilterDto {
@@ -13,25 +13,34 @@ export class ProductFiltersService {
   async createOrUpdate(dto: CreateProductFilterDto) {
     const { productId, filterListId } = dto;
 
-    const existing = await this.prisma.productFilter.findUnique({
-      where: {
-        productId_filterListId: {
-          productId,
-          filterListId,
+    try {
+      const existing = await this.prisma.productFilter.findUnique({
+        where: {
+          productId_filterListId: {
+            productId,
+            filterListId,
+          },
         },
-      },
-    });
+      });
 
-    if (existing) return existing;
+      if (existing) return existing;
 
-    return this.prisma.productFilter.create({
-      data: { productId, filterListId },
-    });
+      return await this.prisma.productFilter.create({
+        data: { productId, filterListId },
+      });
+    } catch (error) {
+      if (error.code === 'P2002') {
+        throw new BadRequestException(
+          `ProductFilter with productId ${productId} and filterListId ${filterListId} already exists.`
+        );
+      }
+      throw new BadRequestException(error.message);
+    }
   }
 
   async createOrUpdateMany(dtos: CreateProductFilterDto[]) {
     const results = await Promise.all(
-      dtos.map((dto) => this.createOrUpdate(dto)),
+      dtos.map((dto) => this.createOrUpdate(dto))
     );
     return results;
   }
@@ -40,16 +49,28 @@ export class ProductFiltersService {
     return this.prisma.productFilter.findMany();
   }
 
-
   findByProduct(productId: number) {
     return this.prisma.productFilter.findMany({ where: { productId } });
   }
 
-  update(id: number, data: any) {
-    return this.prisma.productFilter.update({ where: { id }, data });
+  async update(id: number, data: any) {
+    try {
+      return await this.prisma.productFilter.update({ where: { id }, data });
+    } catch (error) {
+      if (error.code === 'P2002') {
+        throw new BadRequestException(
+          `Update failed: productFilter with similar constraint already exists.`
+        );
+      }
+      throw new BadRequestException(error.message);
+    }
   }
 
-  remove(id: number) {
-    return this.prisma.productFilter.delete({ where: { id } });
+  async remove(id: number) {
+    try {
+      return await this.prisma.productFilter.delete({ where: { id } });
+    } catch (error) {
+      throw new BadRequestException(`Delete failed: ${error.message}`);
+    }
   }
 }
