@@ -61,7 +61,8 @@ export class ProductsService {
           mrp,
           sellingPrice,
 
-          brand:    { connect: { id: brandId } },
+          ...(brandId  != null && { brand:  { connect: { id: brandId  } } }),
+          
           category: { connect: { id: categoryId } },
           ...(sizeId  != null && { size:  { connect: { id: sizeId  } } }),
           ...(colorId != null && { color: { connect: { id: colorId } } }),
@@ -92,6 +93,7 @@ export class ProductsService {
         },
       });
     } catch (err) {
+      console.log(err);
       throw new InternalServerErrorException('Error creating product');
     }
   }

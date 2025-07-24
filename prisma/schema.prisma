@@ -280,8 +280,8 @@ model Product {
   title       String
   description String?
 
-  brandId Int
-  brand   Brand @relation(fields: [brandId], references: [id])
+  brandId Int?
+  brand   Brand? @relation(fields: [brandId], references: [id])
 
   categoryId Int
   category   Category @relation(fields: [categoryId], references: [id])
