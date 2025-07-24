@@ -3,3 +3,7 @@ export class CreateProductFeatureDto {
   featureListId: number;
   value: string;
 }
+export class UpdateProductFeatureDto {
+  featureListId: number;
+  value: string;
+}

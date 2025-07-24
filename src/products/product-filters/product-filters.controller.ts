@@ -1,14 +1,16 @@
 import { Controller, Get, Post, Body, Param, Put, Delete } from '@nestjs/common';
 import { ProductFiltersService } from './product-filters.service';
-import { CreateProductfiltersDto, UpdateProductfiltersDto } from './dto';
+import { CreateProductfiltersDto } from './dto';
 
 @Controller('product-filters')
 export class ProductFiltersController {
   constructor(private readonly productFiltersService: ProductFiltersService) {}
 
+  
+
   @Post()
-  create(@Body() dto: CreateProductfiltersDto) {
-    return this.productFiltersService.create(dto);
+  createOrUpdateMany(@Body() dtos: CreateProductfiltersDto[]) {
+    return this.productFiltersService.createOrUpdateMany(dtos);
   }
 
   @Get()
@@ -16,13 +18,12 @@ export class ProductFiltersController {
     return this.productFiltersService.findAll();
   }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.productFiltersService.findOne(+id);
+ @Get(':id')
+  findByProduct(@Param('id') productId: string) {
+    return this.productFiltersService.findByProduct(+productId);
   }
-
   @Put(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateProductfiltersDto) {
+  update(@Param('id') id: string, @Body() dto: any) {
     return this.productFiltersService.update(+id, dto);
   }
 

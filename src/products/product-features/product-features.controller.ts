@@ -7,8 +7,8 @@ export class ProductFeaturesController {
   constructor(private readonly service: ProductFeaturesService) {}
 
   @Post()
-  create(@Body() dto: CreateProductFeatureDto) {
-    return this.service.create(dto);
+  create(@Body() dtos: CreateProductFeatureDto[]) {
+     return this.service.createOrUpdateMany(dtos); // ✅ for array payload
   }
 
   @Get(':id')

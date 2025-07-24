@@ -352,10 +352,12 @@ model ProductFeature {
   id            Int     @id @default(autoincrement())
   productId     Int
   featureListId Int
-  value         String? // optional text override
+  value         String?
 
   product     Product     @relation(fields: [productId], references: [id])
   featureList FeatureList @relation(fields: [featureListId], references: [id])
+
+  @@unique([productId, featureListId], name: "productId_featureListId") // ✅
 
   @@map("product_features")
 }
@@ -404,8 +406,11 @@ model ProductFilter {
   product    Product    @relation(fields: [productId], references: [id])
   filterList FilterList @relation(fields: [filterListId], references: [id])
 
+  @@unique([productId, filterListId], name: "productId_filterListId") // ✅
+
   @@map("product_filters")
 }
+
 
 model User {
   id             Int      @id @default(autoincrement())
