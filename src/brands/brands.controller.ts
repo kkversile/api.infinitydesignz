@@ -19,7 +19,7 @@ export class BrandsController {
   @UseGuards(JwtAuthGuard)
   @Post()
   create(@Body() dto: { name: string; logo_url?: string; status?: boolean }) {
-     dto.status = parseBooleanStatus(dto.status); // ✅ sanitize
+     dto.status = parseBooleanStatus(dto.status); //  sanitize
     return this.service.create(dto);
   }
 
@@ -38,7 +38,7 @@ export class BrandsController {
   @UseGuards(JwtAuthGuard)
   @Put(':id')
   update(@Param('id') id: string, @Body() dto: any) {
-     dto.status = parseBooleanStatus(dto.status); // ✅ sanitize
+     dto.status = parseBooleanStatus(dto.status); //  sanitize
     return this.service.update(+id, dto);
   }
 

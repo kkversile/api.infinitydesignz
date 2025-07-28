@@ -7,25 +7,65 @@ import { UpdatePriceRangeDto } from './dto/update-price-range.dto';
 export class PriceRangeService {
   constructor(private prisma: PrismaService) {}
 
-  create(data: CreatePriceRangeDto) {
-    return this.prisma.priceRange.create({ data });
+  /** Create a new price range */
+  async create(data: CreatePriceRangeDto) {
+    const priceRange = await this.prisma.priceRange.create({ data });
+
+    return {
+      message: 'Price Range created successfully',
+      data: priceRange,
+    };
   }
 
+  /** Get all price ranges */
   findAll() {
-    return this.prisma.priceRange.findMany({ orderBy: { min: 'asc' } });
+    return this.prisma.priceRange.findMany({
+      orderBy: { min: 'asc' },
+    });
   }
 
-  findOne(id: number) {
-    return this.prisma.priceRange.findUnique({ where: { id } });
+  /** Get one price range by ID */
+  async findOne(id: number) {
+    const priceRange = await this.prisma.priceRange.findUnique({
+      where: { id },
+    });
+
+    if (!priceRange) {
+      throw new NotFoundException('Price Range not found');
+    }
+
+    return priceRange;
   }
 
-  update(id: number, data: UpdatePriceRangeDto) {
-    return this.prisma.priceRange.update({ where: { id }, data });
+  /** Update a price range */
+  async update(id: number, data: UpdatePriceRangeDto) {
+    await this.findOne(id); // ensure it exists
+
+    const updated = await this.prisma.priceRange.update({
+      where: { id },
+      data,
+    });
+
+    return {
+      message: 'Price Range updated successfully',
+      data: updated,
+    };
   }
 
+  /** Delete a price range */
   async remove(id: number) {
-    const exists = await this.prisma.priceRange.findUnique({ where: { id } });
-    if (!exists) throw new NotFoundException('PriceRange not found');
-    return this.prisma.priceRange.delete({ where: { id } });
+    const exists = await this.prisma.priceRange.findUnique({
+      where: { id },
+    });
+
+    if (!exists) {
+      throw new NotFoundException('Price Range not found');
+    }
+
+    await this.prisma.priceRange.delete({ where: { id } });
+
+    return {
+      message: 'Price Range deleted successfully',
+    };
   }
 }

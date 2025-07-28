@@ -11,24 +11,32 @@ export class SizeUOMService {
     });
 
     if (existing) {
-      throw new BadRequestException('Size UOM with the same title already exists.');
+      throw new BadRequestException('❌ Size UOM with this title already exists.');
     }
 
-    return this.prisma.sizeUOM.create({ data });
+    const result = await this.prisma.sizeUOM.create({ data });
+    return { message: 'Size UOM created successfully.', sizeUOM: result };
   }
 
-findAll() {
-  return this.prisma.sizeUOM.findMany({
-    orderBy: {
-      id: 'desc',
-    },
-  });
-}
-  findOne(id: number) {
-    return this.prisma.sizeUOM.findUnique({ where: { id } });
+  async findAll() {
+    const result = await this.prisma.sizeUOM.findMany({
+      orderBy: {
+        id: 'desc',
+      },
+    });
+
+    return { message: 'Size UOM list fetched successfully.', list: result };
   }
 
-async update(id: number, data: Partial<{ title: string; status: boolean }>) {
+  async findOne(id: number) {
+    const result = await this.prisma.sizeUOM.findUnique({ where: { id } });
+    if (!result) {
+      throw new BadRequestException('❌ Size UOM not found.');
+    }
+    return { message: 'Size UOM fetched successfully.', sizeUOM: result };
+  }
+
+  async update(id: number, data: Partial<{ title: string; status: boolean }>) {
     if (data.title) {
       const existing = await this.prisma.sizeUOM.findFirst({
         where: {
@@ -38,17 +46,25 @@ async update(id: number, data: Partial<{ title: string; status: boolean }>) {
       });
 
       if (existing) {
-        throw new BadRequestException('Another Size UOM with the same title already exists.');
+        throw new BadRequestException('❌ Another Size UOM with the same title already exists.');
       }
     }
 
-    return this.prisma.sizeUOM.update({
+    const updated = await this.prisma.sizeUOM.update({
       where: { id },
       data,
     });
+
+    return { message: 'Size UOM updated successfully.', sizeUOM: updated };
   }
 
-  remove(id: number) {
-    return this.prisma.sizeUOM.delete({ where: { id } });
+  async remove(id: number) {
+    const existing = await this.prisma.sizeUOM.findUnique({ where: { id } });
+    if (!existing) {
+      throw new BadRequestException('❌ Size UOM not found for deletion.');
+    }
+
+    await this.prisma.sizeUOM.delete({ where: { id } });
+    return { message: 'Size UOM deleted successfully.' };
   }
 }

@@ -1,4 +1,3 @@
-// src/images/images.service.ts
 import {
   Injectable,
   BadRequestException,
@@ -15,147 +14,144 @@ const formatImageUrl = (fileName: string | null) =>
 @Injectable()
 export class ImagesService {
   constructor(private readonly prisma: PrismaService) {}
-async saveImages(productId: string, files: Express.Multer.File[]) {
-  const parsedProductId = parseInt(productId);
-  if (isNaN(parsedProductId)) throw new BadRequestException('Invalid product ID');
 
-  const imageData = [];
+  /**  Save all product & variant images from form upload */
+  async saveImages(productId: string, files: Express.Multer.File[]) {
+    const parsedProductId = parseInt(productId);
+    if (isNaN(parsedProductId)) throw new BadRequestException('Invalid product ID');
 
-  // Convert files into Record<string, Express.Multer.File[]>
-  const fileMap: Record<string, Express.Multer.File[]> = {};
-  for (const file of files) {
-    if (!fileMap[file.fieldname]) fileMap[file.fieldname] = [];
-    fileMap[file.fieldname].push(file);
-  }
+    const imageData = [];
 
-  // 🧹 Delete old product-level images if uploading new ones
-  if (fileMap.main_image || fileMap.multiple_images) {
-    await this.prisma.image.deleteMany({
-      where: {
-        productId: parsedProductId,
-        variantId: null, // only product-level
-      },
-    });
-  }
-
-  // ✅ Create product-level images
-  if (fileMap.main_image?.[0]) {
-    imageData.push({
-      url: fileMap.main_image[0].filename,
-      productId: parsedProductId,
-      isMain: true,
-    });
-  }
-
-  if (fileMap.multiple_images) {
-    for (const file of fileMap.multiple_images) {
-      imageData.push({
-        url: file.filename,
-        productId: parsedProductId,
-        isMain: false,
-      });
+    const fileMap: Record<string, Express.Multer.File[]> = {};
+    for (const file of files) {
+      if (!fileMap[file.fieldname]) fileMap[file.fieldname] = [];
+      fileMap[file.fieldname].push(file);
     }
-  }
 
-  // 🧠 Handle variant images
-  const variants = await this.prisma.variant.findMany({
-    where: { productId: parsedProductId },
-  });
-
-  for (const variant of variants) {
-    const mainKey = `variant_${variant.id}_main`;
-    const multiKey = `variant_${variant.id}_multiple`;
-
-    // 🧹 If either main/multiple for this variant uploaded, delete existing
-    if (fileMap[mainKey] || fileMap[multiKey]) {
+    // 🧹 Delete old product-level images
+    if (fileMap.main_image || fileMap.multiple_images) {
       await this.prisma.image.deleteMany({
-        where: { variantId: variant.id },
+        where: {
+          productId: parsedProductId,
+          variantId: null,
+        },
       });
     }
 
-    // ✅ Save new variant main
-    if (fileMap[mainKey]?.[0]) {
+    //  Save product-level images
+    if (fileMap.main_image?.[0]) {
       imageData.push({
-        url: fileMap[mainKey][0].filename,
+        url: fileMap.main_image[0].filename,
         productId: parsedProductId,
-        variantId: variant.id,
         isMain: true,
       });
     }
 
-    // ✅ Save new variant multiple
-    if (fileMap[multiKey]) {
-      for (const file of fileMap[multiKey]) {
+    if (fileMap.multiple_images) {
+      for (const file of fileMap.multiple_images) {
         imageData.push({
           url: file.filename,
           productId: parsedProductId,
-          variantId: variant.id,
           isMain: false,
         });
       }
     }
-  }
 
-  // 🔄 Final insert
-  if (imageData.length > 0) {
-    await this.prisma.image.createMany({ data: imageData });
-  }
+    //  Handle variant images
+    const variants = await this.prisma.variant.findMany({
+      where: { productId: parsedProductId },
+    });
 
-  return {
-    message: 'Images replaced for provided inputs. Old ones removed.',
-    count: imageData.length,
-  };
-}
+    for (const variant of variants) {
+      const mainKey = `variant_${variant.id}_main`;
+      const multiKey = `variant_${variant.id}_multiple`;
 
-
-
-  async getImagesByProduct(productId: number) {
-  const images = await this.prisma.image.findMany({
-    where: { productId },
-  });
-
-  const formatted = images.map(img => ({
-    ...img,
-    url: formatImageUrl(img.url),
-  }));
-
-  // 🔍 Product-level images (no variantId)
-  const productImages = formatted.filter(img => img.variantId === null);
-  const mainProductImage = productImages.find(img => img.isMain);
-  const additionalProductImages = productImages.filter(img => !img.isMain);
-
-  // 🔍 Group variant images
-  const variants: Record<number, { main: any | null; additional: any[] }> = {};
-  for (const img of formatted) {
-    if (img.variantId != null) {
-      if (!variants[img.variantId]) {
-        variants[img.variantId] = { main: null, additional: [] };
+      if (fileMap[mainKey] || fileMap[multiKey]) {
+        await this.prisma.image.deleteMany({
+          where: { variantId: variant.id },
+        });
       }
-      if (img.isMain) {
-        variants[img.variantId].main = img;
-      } else {
-        variants[img.variantId].additional.push(img);
+
+      if (fileMap[mainKey]?.[0]) {
+        imageData.push({
+          url: fileMap[mainKey][0].filename,
+          productId: parsedProductId,
+          variantId: variant.id,
+          isMain: true,
+        });
+      }
+
+      if (fileMap[multiKey]) {
+        for (const file of fileMap[multiKey]) {
+          imageData.push({
+            url: file.filename,
+            productId: parsedProductId,
+            variantId: variant.id,
+            isMain: false,
+          });
+        }
       }
     }
+
+    if (imageData.length > 0) {
+      await this.prisma.image.createMany({ data: imageData });
+    }
+
+    return {
+      message: 'Images uploaded and replaced successfully.',
+      count: imageData.length,
+    };
   }
 
-  return {
-    main: mainProductImage || null,
-    additional: additionalProductImages,
-    variants,
-  };
-}
+  /** 📦 Get formatted image groups for a product (main, additional, by variant) */
+  async getImagesByProduct(productId: number) {
+    const images = await this.prisma.image.findMany({
+      where: { productId },
+    });
 
+    const formatted = images.map((img) => ({
+      ...img,
+      url: formatImageUrl(img.url),
+    }));
+
+    const productImages = formatted.filter((img) => img.variantId === null);
+    const mainProductImage = productImages.find((img) => img.isMain);
+    const additionalProductImages = productImages.filter((img) => !img.isMain);
+
+    const variants: Record<number, { main: any | null; additional: any[] }> = {};
+    for (const img of formatted) {
+      if (img.variantId != null) {
+        if (!variants[img.variantId]) {
+          variants[img.variantId] = { main: null, additional: [] };
+        }
+        if (img.isMain) {
+          variants[img.variantId].main = img;
+        } else {
+          variants[img.variantId].additional.push(img);
+        }
+      }
+    }
+
+    return {
+      main: mainProductImage || null,
+      additional: additionalProductImages,
+      variants,
+    };
+  }
+
+  /** 🔍 Get raw images for a variant */
   async getImagesByVariant(variantId: number) {
     const images = await this.prisma.image.findMany({
       where: { variantId },
     });
-    return images.map(img => ({
+
+    return images.map((img) => ({
       ...img,
       url: formatImageUrl(img.url),
     }));
   }
 
+  /**  Update image file or isMain flag */
   async updateImage(
     id: number,
     imageFile?: Express.Multer.File,
@@ -167,12 +163,11 @@ async saveImages(productId: string, files: Express.Multer.File[]) {
     const payload: any = {};
 
     if (imageFile) {
-      // Delete old file if exists
       const oldPath = join(__dirname, '../../..', 'public', PRODUCT_IMAGE_PATH, image.url);
       try {
         await unlink(oldPath);
-      } catch (err) {
-        console.warn('Old image not found or already deleted.');
+      } catch {
+        console.warn('⚠️ Old image not found or already deleted');
       }
       payload.url = imageFile.filename;
     }
@@ -187,11 +182,15 @@ async saveImages(productId: string, files: Express.Multer.File[]) {
     });
 
     return {
-      ...updated,
-      url: formatImageUrl(updated.url),
+      message: 'Image updated successfully',
+      data: {
+        ...updated,
+        url: formatImageUrl(updated.url),
+      },
     };
   }
 
+  /** Delete image by ID */
   async deleteImage(id: number) {
     const image = await this.prisma.image.findUnique({ where: { id } });
     if (!image) throw new NotFoundException(`Image with ID ${id} not found`);
@@ -199,12 +198,14 @@ async saveImages(productId: string, files: Express.Multer.File[]) {
     const filePath = join(__dirname, '../../..', 'public', PRODUCT_IMAGE_PATH, image.url);
     try {
       await unlink(filePath);
-    } catch (err) {
-      console.warn('Image file not found or already deleted.');
+    } catch {
+      console.warn('⚠️ File already deleted or not found');
     }
 
     await this.prisma.image.delete({ where: { id } });
 
-    return { message: `Image ${id} deleted successfully` };
+    return {
+      message: `Image with ID ${id} deleted successfully`,
+    };
   }
 }

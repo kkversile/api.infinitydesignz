@@ -18,7 +18,7 @@ async function main() {
     })
   }
 
-  console.log('✅ Seeded price ranges')
+  console.log(' Seeded price ranges')
 }
 
 main()

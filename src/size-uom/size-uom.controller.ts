@@ -12,7 +12,7 @@ export class SizeUOMController {
   @UseGuards(JwtAuthGuard)
   @Post()
   create(@Body() dto: any) {
-     dto.status = parseBooleanStatus(dto.status); // ✅ sanitize
+     dto.status = parseBooleanStatus(dto.status); //  sanitize
     return this.service.create(dto);
   }
 

@@ -1,5 +1,3 @@
-// src/coupons/coupon.service.ts
-
 import {
   Injectable,
   NotFoundException,
@@ -14,9 +12,14 @@ import { Prisma } from '@prisma/client';
 export class CouponService {
   constructor(private prisma: PrismaService) {}
 
+  /** Create coupon with duplicate code protection */
   async create(data: CreateCouponDto) {
     try {
-      return await this.prisma.coupon.create({ data });
+      const coupon = await this.prisma.coupon.create({ data });
+      return {
+        message: 'Coupon created successfully',
+        data: coupon,
+      };
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -24,21 +27,36 @@ export class CouponService {
       ) {
         throw new BadRequestException('Coupon code already exists');
       }
-      throw error; // unknown error - rethrow
+      throw error;
     }
   }
 
+  /** List all coupons */
   findAll() {
-    return this.prisma.coupon.findMany({ orderBy: { createdAt: 'desc' } });
+    return this.prisma.coupon.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
   }
 
-  findOne(id: number) {
-    return this.prisma.coupon.findUnique({ where: { id } });
+  /** Find one coupon by ID */
+  async findOne(id: number) {
+    const coupon = await this.prisma.coupon.findUnique({ where: { id } });
+    if (!coupon) throw new NotFoundException('Coupon not found');
+    return coupon;
   }
 
+  /** Update coupon with error handling */
   async update(id: number, data: UpdateCouponDto) {
     try {
-      return await this.prisma.coupon.update({ where: { id }, data });
+      const updated = await this.prisma.coupon.update({
+        where: { id },
+        data,
+      });
+
+      return {
+        message: 'Coupon updated successfully',
+        data: updated,
+      };
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -50,9 +68,19 @@ export class CouponService {
     }
   }
 
+  /** Delete coupon with existence check */
   async remove(id: number) {
-    const exists = await this.prisma.coupon.findUnique({ where: { id } });
-    if (!exists) throw new NotFoundException('Coupon not found');
-    return this.prisma.coupon.delete({ where: { id } });
+    const exists = await this.prisma.coupon.findUnique({
+      where: { id },
+    });
+    if (!exists) {
+      throw new NotFoundException('Coupon not found');
+    }
+
+    await this.prisma.coupon.delete({ where: { id } });
+
+    return {
+      message: 'Coupon deleted successfully',
+    };
   }
 }

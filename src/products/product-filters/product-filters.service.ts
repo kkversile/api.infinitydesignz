@@ -10,64 +10,64 @@ interface CreateProductFilterDto {
 export class ProductFiltersService {
   constructor(private readonly prisma: PrismaService) {}
 
-async createOrUpdate(dto: CreateProductFilterDto) {
-  const { productId, filterListId } = dto;
+  async createOrUpdate(dto: CreateProductFilterDto) {
+    const { productId, filterListId } = dto;
 
-  try {
-    // Check existence of foreign keys BEFORE create
-    const productExists = await this.prisma.product.findUnique({
-      where: { id: productId },
-      select: { id: true },
-    });
+    try {
+      const productExists = await this.prisma.product.findUnique({
+        where: { id: productId },
+        select: { id: true },
+      });
 
-    if (!productExists) {
-      throw new BadRequestException(`Invalid productId does not exists in DB: ${productId}`);
-    }
+      if (!productExists) {
+        throw new BadRequestException(`Invalid productId does not exist in DB: ${productId}`);
+      }
 
-    const filterExists = await this.prisma.filterList.findUnique({
-      where: { id: filterListId },
-      select: { id: true },
-    });
+      const filterExists = await this.prisma.filterList.findUnique({
+        where: { id: filterListId },
+        select: { id: true },
+      });
 
-    if (!filterExists) {
-      throw new BadRequestException(`Invalid filterListId does not exists in DB: ${filterListId}`);
-    }
+      if (!filterExists) {
+        throw new BadRequestException(`Invalid filterListId does not exist in DB: ${filterListId}`);
+      }
 
-    // Check for existing combination
-    const existing = await this.prisma.productFilter.findUnique({
-      where: {
-        productId_filterListId: {
-          productId,
-          filterListId,
+      const existing = await this.prisma.productFilter.findUnique({
+        where: {
+          productId_filterListId: {
+            productId,
+            filterListId,
+          },
         },
-      },
-    });
+      });
 
-    if (existing) return existing;
+      if (existing) {
+        return { message: 'Product Filter already exists', data: existing };
+      }
 
-    return await this.prisma.productFilter.create({
-      data: { productId, filterListId },
-    });
-  } catch (error) {
-    if (error instanceof BadRequestException) {
-      throw error;
+      const created = await this.prisma.productFilter.create({
+        data: { productId, filterListId },
+      });
+
+      return { message: 'Product Filter created successfully', data: created };
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+
+      if (error.code === 'P2002') {
+        throw new BadRequestException(
+          `ProductFilter with productId ${productId} and filterListId ${filterListId} already exists.`
+        );
+      }
+
+      throw new BadRequestException(error.message);
     }
-
-    if (error.code === 'P2002') {
-      throw new BadRequestException(
-        `ProductFilter with productId ${productId} and filterListId ${filterListId} already exists.`
-      );
-    }
-
-    throw new BadRequestException(error.message);
   }
-}
 
   async createOrUpdateMany(dtos: CreateProductFilterDto[]) {
-    const results = await Promise.all(
-      dtos.map((dto) => this.createOrUpdate(dto))
-    );
-    return results;
+    const results = await Promise.all(dtos.map((dto) => this.createOrUpdate(dto)));
+    return { message: `${results.length} product filters processed successfully`, data: results };
   }
 
   findAll() {
@@ -80,7 +80,8 @@ async createOrUpdate(dto: CreateProductFilterDto) {
 
   async update(id: number, data: any) {
     try {
-      return await this.prisma.productFilter.update({ where: { id }, data });
+      const updated = await this.prisma.productFilter.update({ where: { id }, data });
+      return { message: 'Product Filter updated successfully', data: updated };
     } catch (error) {
       if (error.code === 'P2002') {
         throw new BadRequestException(
@@ -93,7 +94,8 @@ async createOrUpdate(dto: CreateProductFilterDto) {
 
   async remove(id: number) {
     try {
-      return await this.prisma.productFilter.delete({ where: { id } });
+      await this.prisma.productFilter.delete({ where: { id } });
+      return { message: `Product Filter with ID ${id} deleted successfully` };
     } catch (error) {
       throw new BadRequestException(`Delete failed: ${error.message}`);
     }

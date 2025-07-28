@@ -28,7 +28,7 @@ export class CreateCouponDto {
   @IsOptional()
   @IsBoolean()
   @Type(() => Boolean)
-  status: boolean = true; // ✅ Default true
+  status: boolean = true; //  Default true
 
   @IsOptional() menuId?: number
   @IsOptional() subMenuId?: number

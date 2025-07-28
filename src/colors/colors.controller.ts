@@ -12,7 +12,7 @@ export class ColorsController {
   @UseGuards(JwtAuthGuard)
   @Post()
   create(@Body() dto: any) {
-     dto.status = parseBooleanStatus(dto.status); // ✅ sanitize
+     dto.status = parseBooleanStatus(dto.status); //  sanitize
     return this.service.create(dto);
   }
 
@@ -31,7 +31,7 @@ export class ColorsController {
   @UseGuards(JwtAuthGuard)
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: any) {
-     dto.status = parseBooleanStatus(dto.status); // ✅ sanitize
+     dto.status = parseBooleanStatus(dto.status); //  sanitize
     return this.service.update(+id, dto);
   }
 

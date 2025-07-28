@@ -4,7 +4,7 @@ export class CreateProductsDto {
   description?: string;
   brandId: number;
 
-  // ✅ Updated 3-level category support
+  //  Updated 3-level category support
   categoryId: number;
   
 

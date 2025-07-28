@@ -1,5 +1,3 @@
-// src/products/products.service.ts
-
 import {
   BadRequestException,
   Injectable,
@@ -31,12 +29,10 @@ export class ProductsService {
       variants = [],
     } = dto;
 
-    // duplicate SKU?
     if (await this.prisma.product.findUnique({ where: { sku } })) {
       throw new BadRequestException(`Product with SKU '${sku}' already exists.`);
     }
 
-    // validate FKs
     const checks = [
       { id: brandId,    label: 'Brand',    model: this.prisma.brand },
       { id: categoryId, label: 'Category', model: this.prisma.category },
@@ -44,13 +40,13 @@ export class ProductsService {
       { id: colorId,    label: 'Color',    model: this.prisma.color },
     ];
     for (const { id, label, model } of checks) {
-      if (id != null && !(await (model as any).findUnique({ where: { id } }))) {
+      if (id && Number(id) > 0  && !(await (model as any).findUnique({ where: { id } }))) {
         throw new BadRequestException(`${label} with ID '${id}' does not exist.`);
       }
     }
 
     try {
-      return await this.prisma.product.create({
+      const created = await this.prisma.product.create({
         data: {
           sku,
           title,
@@ -61,8 +57,7 @@ export class ProductsService {
           mrp,
           sellingPrice,
 
-          ...(brandId  != null && { brand:  { connect: { id: brandId  } } }),
-          
+          ...(!!brandId && Number(brandId) > 0 && { brand: { connect: { id: Number(brandId) } } }),
           category: { connect: { id: categoryId } },
           ...(sizeId  != null && { size:  { connect: { id: sizeId  } } }),
           ...(colorId != null && { color: { connect: { id: colorId } } }),
@@ -92,6 +87,8 @@ export class ProductsService {
             : undefined,
         },
       });
+
+      return { message: 'Product created successfully', data: created };
     } catch (err) {
       console.log(err);
       throw new InternalServerErrorException('Error creating product');
@@ -99,173 +96,169 @@ export class ProductsService {
   }
 
   async findAll() {
-  const products = await  this.prisma.product.findMany({
-    orderBy: { id: 'desc' },
-    include: {
-      category: {
-        include: {
-          parent: {
-            include: {
-              parent: true, // Grandparent
+    const products = await this.prisma.product.findMany({
+      orderBy: { id: 'desc' },
+      include: {
+        category: {
+          include: {
+            parent: {
+              include: {
+                parent: true,
+              },
             },
-          },
-          featureType: {
-            include: {
-              featureSets: {
-                include: {
-                  featureLists: true,
+            featureType: {
+              include: {
+                featureSets: {
+                  include: {
+                    featureLists: true,
+                  },
                 },
               },
             },
-          },
-          filterType: {
-            include: {
-              filterSets: {
-                include: {
-                  filterLists: true,
+            filterType: {
+              include: {
+                filterSets: {
+                  include: {
+                    filterLists: true,
+                  },
                 },
               },
             },
           },
         },
-      },
-      brand: true,
-      color: true,
-      size: true,
-      productDetails: true,
-      variants: {
-        include: {
-          size: true,
-          color: true,
+        brand: true,
+        color: true,
+        size: true,
+        productDetails: true,
+        variants: {
+          include: {
+            size: true,
+            color: true,
+          },
         },
+        images: true,
+        filters: true,
+        features: true,
       },
-      images: true,
-      filters: true,
-      features: true,
-    },
-  });
+    });
 
-  return products.map((product) => {
-  const category = product.category;
-  const parent = category?.parent;
-  const grandparent = parent?.parent;
+    return {
+      message: 'Products fetched successfully',
+      data: products.map((product) => {
+        const category = product.category;
+        const parent = category?.parent;
+        const grandparent = parent?.parent;
 
-  // 🔍 Group product-level images
-  const productImages = product.images.filter(img => img.variantId === null);
-  const mainProductImage = productImages.find(img => img.isMain);
-  const additionalProductImages = productImages.filter(img => !img.isMain);
+        const productImages = product.images.filter(img => img.variantId === null);
+        const mainProductImage = productImages.find(img => img.isMain);
+        const additionalProductImages = productImages.filter(img => !img.isMain);
 
-  // 🔍 Group variant-level images
-  const variantImagesMap: Record<number, { main: any | null; additional: any[] }> = {};
+        const variantImagesMap: Record<number, { main: any | null; additional: any[] }> = {};
+        for (const v of product.variants) {
+          const imgs = product.images.filter(img => img.variantId === v.id);
+          variantImagesMap[v.id] = {
+            main: imgs.find(img => img.isMain) || null,
+            additional: imgs.filter(img => !img.isMain),
+          };
+        }
 
-  for (const v of product.variants) {
-    const imgs = product.images.filter(img => img.variantId === v.id);
-    variantImagesMap[v.id] = {
-      main: imgs.find(img => img.isMain) || null,
-      additional: imgs.filter(img => !img.isMain),
+        return {
+          ...product,
+          mainCategoryTitle: grandparent?.title || null,
+          mainCategoryId: grandparent?.id || null,
+          subCategoryTitle: parent?.title || null,
+          subCategoryId: parent?.id || null,
+          listSubCategoryTitle: category?.title || null,
+          listSubCategoryId: category?.id || null,
+          images: {
+            main: mainProductImage || null,
+            additional: additionalProductImages,
+            variants: variantImagesMap,
+          }
+        };
+      }),
     };
   }
 
-  return {
-    ...product,
-    mainCategoryTitle: grandparent?.title || null,
-  mainCategoryId: grandparent?.id || null,
+  async findOne(id: number) {
+    const product = await this.prisma.product.findUnique({
+      where: { id },
+      include: {
+        category: {
+          include: {
+            parent: {
+              include: {
+                parent: true,
+              },
+            },
+            featureType: {
+              include: {
+                featureSets: { include: { featureLists: true } },
+              },
+            },
+            filterType: {
+              include: {
+                filterSets: { include: { filterLists: true } },
+              },
+            },
+          },
+        },
+        brand: true,
+        color: true,
+        size: true,
+        productDetails: true,
+        variants: { include: { size: true, color: true } },
+        images: true,
+        filters: true,
+        features: true,
+      },
+    });
 
-  subCategoryTitle: parent?.title || null,
-  subCategoryId: parent?.id || null,
-
-  listSubCategoryTitle: category?.title || null,
-  listSubCategoryId: category?.id || null,
-    images: {
-      main: mainProductImage || null,
-      additional: additionalProductImages,
-      variants: variantImagesMap,
+    if (!product) {
+      throw new NotFoundException(`Product with ID ${id} not found.`);
     }
-  };
-});
 
-}
-async findOne(id: number) {
-  const product = await this.prisma.product.findUnique({
-    where: { id },
-    include: {
-      category: {
-        include: {
-          parent: {
-            include: {
-              parent: true, // Grandparent
-            },
-          },
-          featureType: {
-            include: {
-              featureSets: { include: { featureLists: true } },
-            },
-          },
-          filterType: {
-            include: {
-              filterSets: { include: { filterLists: true } },
-            },
-          },
+    const category = product.category;
+    const parent = category?.parent;
+    const grandparent = parent?.parent;
+
+    const productImages = product.images.filter(img => img.variantId === null);
+    const mainProductImage = productImages.find(img => img.isMain);
+    const additionalProductImages = productImages.filter(img => !img.isMain);
+
+    const variantImagesMap: Record<number, { main: any | null; additional: any[] }> = {};
+    for (const v of product.variants) {
+      const imgs = product.images.filter(img => img.variantId === v.id);
+      variantImagesMap[v.id] = {
+        main: imgs.find(img => img.isMain) || null,
+        additional: imgs.filter(img => !img.isMain),
+      };
+    }
+
+    return {
+      message: 'Product fetched successfully',
+      data: {
+        ...product,
+        mainCategoryTitle: grandparent?.title || null,
+        mainCategoryId: grandparent?.id || null,
+        subCategoryTitle: parent?.title || null,
+        subCategoryId: parent?.id || null,
+        listSubCategoryTitle: category?.title || null,
+        listSubCategoryId: category?.id || null,
+        images: {
+          main: mainProductImage || null,
+          additional: additionalProductImages,
+          variants: variantImagesMap,
         },
       },
-      brand: true,
-      color: true,
-      size: true,
-      productDetails: true,
-      variants: { include: { size: true, color: true } },
-      images: true,
-      filters: true,
-      features: true,
-    },
-  });
-
-  if (!product) {
-    throw new NotFoundException(`Product with ID ${id} not found.`);
-  }
-
-  const category = product.category;
-  const parent = category?.parent;
-  const grandparent = parent?.parent;
-
-  // 🔍 Group product-level images
-  const productImages = product.images.filter(img => img.variantId === null);
-  const mainProductImage = productImages.find(img => img.isMain);
-  const additionalProductImages = productImages.filter(img => !img.isMain);
-
-  // 🔍 Group variant-level images
-  const variantImagesMap: Record<number, { main: any | null; additional: any[] }> = {};
-  for (const v of product.variants) {
-    const imgs = product.images.filter(img => img.variantId === v.id);
-    variantImagesMap[v.id] = {
-      main: imgs.find(img => img.isMain) || null,
-      additional: imgs.filter(img => !img.isMain),
     };
   }
-
-  return {
-    ...product,
-  mainCategoryTitle: grandparent?.title || null,
-  mainCategoryId: grandparent?.id || null,
-
-  subCategoryTitle: parent?.title || null,
-  subCategoryId: parent?.id || null,
-
-  listSubCategoryTitle: category?.title || null,
-  listSubCategoryId: category?.id || null,
-
-    images: {
-      main: mainProductImage || null,
-      additional: additionalProductImages,
-      variants: variantImagesMap,
-    },
-  };
-}
-
 
   async findIdsOnly() {
-    return this.prisma.product.findMany({
+    const ids = await this.prisma.product.findMany({
       select: { id: true, title: true },
     });
+    return { message: 'Product IDs fetched', data: ids };
   }
 
   async exists(id: number) {
@@ -308,7 +301,7 @@ async findOne(id: number) {
       }
     }
 
-    return this.prisma.product.update({
+    const updated = await this.prisma.product.update({
       where: { id },
       data: {
         sku,
@@ -359,54 +352,44 @@ async findOne(id: number) {
           : undefined,
       },
     });
+
+    return { message: 'Product updated successfully', data: updated };
   }
 
-  // src/products/products.service.ts
-async remove(id: number) {
-  const product = await this.prisma.product.findUnique({
-    where: { id },
-    include: {
-      variants: true,
-      images: true,
-      features: true,
-      filters: true,
-      productDetails: true,
-    },
-  });
+  async remove(id: number) {
+    const product = await this.prisma.product.findUnique({
+      where: { id },
+      include: {
+        variants: true,
+        images: true,
+        features: true,
+        filters: true,
+        productDetails: true,
+      },
+    });
 
-  if (!product) throw new NotFoundException('Product not found');
+    if (!product) throw new NotFoundException('Product not found');
 
-  const deleteOps = [];
+    const deleteOps = [];
 
-  // 1. Delete variant images
-  const variantImageIds = await this.prisma.image.findMany({
-    where: { variantId: { in: product.variants.map(v => v.id) } },
-    select: { id: true },
-  });
+    const variantImageIds = await this.prisma.image.findMany({
+      where: { variantId: { in: product.variants.map(v => v.id) } },
+      select: { id: true },
+    });
 
-  deleteOps.push(
-    this.prisma.image.deleteMany({ where: { id: { in: variantImageIds.map(i => i.id) } } })
-  );
+    deleteOps.push(
+      this.prisma.image.deleteMany({ where: { id: { in: variantImageIds.map(i => i.id) } } })
+    );
 
-  // 2. Delete product images
-  deleteOps.push(this.prisma.image.deleteMany({ where: { productId: id } }));
+    deleteOps.push(this.prisma.image.deleteMany({ where: { productId: id } }));
+    deleteOps.push(this.prisma.productFeature.deleteMany({ where: { productId: id } }));
+    deleteOps.push(this.prisma.productFilter.deleteMany({ where: { productId: id } }));
+    deleteOps.push(this.prisma.variant.deleteMany({ where: { productId: id } }));
+    deleteOps.push(this.prisma.productDetails.deleteMany({ where: { productId: id } }));
+    deleteOps.push(this.prisma.product.delete({ where: { id } }));
 
-  // 3. Delete features & filters
-  deleteOps.push(this.prisma.productFeature.deleteMany({ where: { productId: id } }));
-  deleteOps.push(this.prisma.productFilter.deleteMany({ where: { productId: id } }));
+    await this.prisma.$transaction(deleteOps);
 
-  // 4. Delete variants
-  deleteOps.push(this.prisma.variant.deleteMany({ where: { productId: id } }));
-
-  // 5. Delete product details
-  deleteOps.push(this.prisma.productDetails.deleteMany({ where: { productId: id } }));
-
-  // 6. Finally, delete the product itself
-  deleteOps.push(this.prisma.product.delete({ where: { id } }));
-
-  await this.prisma.$transaction(deleteOps);
-
-  return { message: 'Product and related data deleted successfully' };
-}
-
+    return { message: 'Product and related data deleted successfully' };
+  }
 }

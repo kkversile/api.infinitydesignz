@@ -43,7 +43,7 @@ export class CategoriesController {
       webImage?: Array<Express.Multer.File>;
     }
   ) {
-       body.status = parseBooleanStatus(body.status); // ✅
+       body.status = parseBooleanStatus(body.status); // 
 
     return this.service.create(body, files);
   }
@@ -65,7 +65,7 @@ async updateStatusBulk(
   @Body() body: { ids: number[]; status: boolean }
 ) {
 
- const status = parseBooleanStatus(body.status); // ✅
+ const status = parseBooleanStatus(body.status); // 
  
   return this.service.updateStatusBulk(body.ids, body.status);
 }
@@ -90,7 +90,7 @@ async updateStatusBulk(
         webImage?: Array<Express.Multer.File>;
       }
   ) {
-         body.status = parseBooleanStatus(body.status); // ✅
+         body.status = parseBooleanStatus(body.status); // 
     return this.service.update(+id, body, files);
   }
 

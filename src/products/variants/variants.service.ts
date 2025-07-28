@@ -5,27 +5,33 @@ import { PrismaService } from '../../prisma/prisma.service';
 export class VariantsService {
   constructor(private readonly prisma: PrismaService) {}
 
- async create(data: any) {
+  async create(data: any) {
     const existing = await this.prisma.variant.findFirst({
       where: { sku: data.sku },
     });
 
     if (existing) {
-      throw new BadRequestException('A variant with this SKU already exists.');
+      throw new BadRequestException('❌ Variant with this SKU already exists.');
     }
 
-    return this.prisma.variant.create({ data });
+    const result = await this.prisma.variant.create({ data });
+    return { message: 'Variant created successfully.', variant: result };
   }
 
-  findAll() {
-    return this.prisma.variant.findMany();
+  async findAll() {
+    const variants = await this.prisma.variant.findMany();
+    return { message: 'Variants fetched successfully.', variants };
   }
 
-  findOne(id: number) {
-    return this.prisma.variant.findUnique({ where: { id } });
+  async findOne(id: number) {
+    const variant = await this.prisma.variant.findUnique({ where: { id } });
+    if (!variant) {
+      throw new BadRequestException('❌ Variant not found.');
+    }
+    return { message: 'Variant fetched successfully.', variant };
   }
 
-   async update(id: number, data: any) {
+  async update(id: number, data: any) {
     const existing = await this.prisma.variant.findFirst({
       where: {
         sku: data.sku,
@@ -34,16 +40,24 @@ export class VariantsService {
     });
 
     if (existing) {
-      throw new BadRequestException('Another variant with this SKU already exists.');
+      throw new BadRequestException('❌ Another variant with this SKU already exists.');
     }
 
-    return this.prisma.variant.update({
+    const updated = await this.prisma.variant.update({
       where: { id },
       data,
     });
+
+    return { message: 'Variant updated successfully.', variant: updated };
   }
 
-  remove(id: number) {
-    return this.prisma.variant.delete({ where: { id } });
+  async remove(id: number) {
+    const existing = await this.prisma.variant.findUnique({ where: { id } });
+    if (!existing) {
+      throw new BadRequestException('❌ Variant not found for deletion.');
+    }
+
+    await this.prisma.variant.delete({ where: { id } });
+    return { message: 'Variant deleted successfully.' };
   }
 }

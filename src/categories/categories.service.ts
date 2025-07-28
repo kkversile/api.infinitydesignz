@@ -15,6 +15,26 @@ const formatCategoryResponse = (c: any) => ({
 @Injectable()
 export class CategoriesService {
   constructor(private prisma: PrismaService) {}
+/** Recursive helper to fetch children of a category */
+private async getCategoryWithChildrenRecursive(id: number): Promise<any> {
+  const category = await this.prisma.category.findUnique({
+    where: { id },
+    include: {
+      children: true,
+      featureType: { include: { featureSets: { include: { featureLists: true } } } },
+      filterType:  { include: { filterSets:  { include: { filterLists:  true } } } },
+    },
+  });
+
+  if (!category) return null;
+
+  return {
+    ...formatCategoryResponse(category),
+    children: await Promise.all(
+      category.children.map(child => this.getCategoryWithChildrenRecursive(child.id))
+    )
+  };
+}
 
   /** Create a leaf category with direct FeatureType/FilterType FKs */
   async create(data: any, files: any = {}) {
@@ -45,51 +65,57 @@ export class CategoriesService {
         webImage:  files.webImage?.[0]?.filename  || null,
       },
     });
-
-    return formatCategoryResponse(category);
+ return {
+    message: 'Category created successfully',
+    data: formatCategoryResponse(category),
+  };
+   
   }
 
   /** List all categories with nested FeatureType→Sets→Lists and FilterType→Sets→Lists */
-  async findAll() {
-    const categories = await this.prisma.category.findMany({
-      orderBy: { id: 'desc' },
-      include: {
-        featureType: { include: { featureSets: { include: { featureLists: true } } } },
-        filterType:  { include: { filterSets:  { include: { filterLists:  true } } } },
+async findAll() {
+  const categories = await this.prisma.category.findMany({
+    include: {
+      featureType: {
+        include: { featureSets: { include: { featureLists: true } } },
       },
-    });
+      filterType: {
+        include: { filterSets: { include: { filterLists: true } } },
+      },
+    },
+    orderBy: { id: 'asc' },
+  });
 
-    const ids      = categories.map(c => c.id);
-    const children = await this.prisma.category.findMany({ where: { parentId: { in: ids } } });
-    const map      = new Map<number, any[]>();
-    for (const ch of children) {
-      (map.get(ch.parentId) ?? map.set(ch.parentId, []).get(ch.parentId)).push(ch);
+  const formatted = categories.map(c => ({
+    ...formatCategoryResponse(c),
+    children: [],
+  }));
+
+  const categoryMap = new Map<number, any>();
+  formatted.forEach(cat => categoryMap.set(cat.id, cat));
+
+  const result = [];
+
+  for (const cat of formatted) {
+    if (cat.parentId) {
+      const parent = categoryMap.get(cat.parentId);
+      if (parent) {
+        parent.children.push(cat);
+      }
     }
-
-    return categories.map(c => ({
-      ...formatCategoryResponse(c),
-      children: (map.get(c.id) || []).map(ch => ({ id: ch.id, title: ch.title, children: [] })),
-    }));
+    // Whether parent or not, we return all nodes in the list
+    result.push(cat);
   }
+
+  return result;
+}
 
   /** Fetch one category (with its tree) plus its FeatureType & FilterType hierarchy */
-  async findOne(id: number) {
-    const cat = await this.prisma.category.findUnique({
-      where: { id },
-      include: {
-        featureType: { include: { featureSets: { include: { featureLists: true } } } },
-        filterType:  { include: { filterSets:  { include: { filterLists:  true } } } },
-        children: true,
-      },
-    });
-    if (!cat) throw new NotFoundException(`Category ${id} not found`);
-
-    return {
-      ...formatCategoryResponse(cat),
-      children: cat.children.map(ch => ({ id: ch.id, title: ch.title, children: [] }))
-    };
-  }
-
+async findOne(id: number) {
+  const category = await this.getCategoryWithChildrenRecursive(id);
+  if (!category) throw new NotFoundException(`Category ${id} not found`);
+  return category;
+}
   /** Update direct FKs via connect/disconnect on one FeatureType & one FilterType */
   async update(id: number, data: any, files: any = {}) {
     const existing = await this.prisma.category.findUnique({ where: { id } });
@@ -133,7 +159,10 @@ export class CategoriesService {
       data: payload,
     });
 
-    return formatCategoryResponse(updated);
+     return {
+    message: 'Category updated successfully',
+    data: formatCategoryResponse(updated),
+  };
   }
 
   async updateStatusBulk(ids: number[], status: boolean) {
@@ -150,7 +179,65 @@ export class CategoriesService {
     };
   }
 
-  remove(id: number) {
-    return this.prisma.category.delete({ where: { id } });
+ async remove(id: number) {
+  const category = await this.prisma.category.findUnique({
+    where: { id },
+    include: { children: true },
+  });
+  if (!category) throw new NotFoundException('Category not found');
+
+  // Recursively collect all descendant category IDs
+  const collectDescendants = async (categoryId: number): Promise<number[]> => {
+    const children = await this.prisma.category.findMany({
+      where: { parentId: categoryId },
+      select: { id: true },
+    });
+    const ids = children.map(c => c.id);
+
+    for (const child of children) {
+      ids.push(...await collectDescendants(child.id));
+    }
+
+    return ids;
+  };
+
+  const descendantIds = await collectDescendants(id);
+  const allCategoryIds = [id, ...descendantIds];
+
+  // Check for products assigned to any of the categories
+  const assignedProducts = await this.prisma.product.findMany({
+    where: { categoryId: { in: allCategoryIds } },
+    select: {
+      id: true,
+      sku: true,
+      title: true,
+      categoryId: true,
+    },
+    take: 10,
+  });
+
+  if (assignedProducts.length > 0) {
+    const preview = assignedProducts
+      .map(p => `#${p.id} (${p.sku}) (${p.title}) → Category #${p.categoryId}`)
+      .join(', ');
+
+    throw new BadRequestException(
+      `❌ Cannot delete: One or more categories (including children) are assigned to products: ${preview}. Please reassign them first.`
+    );
   }
+
+  // Delete children first (deepest first)
+  for (const childId of descendantIds.reverse()) {
+    await this.prisma.category.delete({ where: { id: childId } });
+  }
+
+  // Delete main category
+  await this.prisma.category.delete({ where: { id } });
+
+  return {
+    message: 'Category deleted successfully',
+  };
+}
+
+
 }

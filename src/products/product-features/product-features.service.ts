@@ -36,21 +36,23 @@ export class ProductFeaturesService {
       });
 
       if (existing) {
-        return this.prisma.productFeature.update({
+        await this.prisma.productFeature.update({
           where: {
             productId_featureListId: { productId, featureListId },
           },
           data: { value },
         });
+        return { message: 'Product Feature updated successfully' };
       }
 
-      return await this.prisma.productFeature.create({
+      await this.prisma.productFeature.create({
         data: {
           productId,
           featureListId,
           value,
         },
       });
+      return { message: 'Product Feature created successfully' };
     } catch (error) {
       if (error instanceof BadRequestException) {
         throw error;
@@ -68,7 +70,9 @@ export class ProductFeaturesService {
     const results = await Promise.all(
       items.map((dto) => this.createOrUpdate(dto))
     );
-    return results;
+    return {
+      message: `${results.length} product features processed successfully`,
+    };
   }
 
   findByProduct(productId: number) {
@@ -77,10 +81,11 @@ export class ProductFeaturesService {
 
   async update(id: number, dto: UpdateProductFeatureDto) {
     try {
-      return await this.prisma.productFeature.update({
+      await this.prisma.productFeature.update({
         where: { id },
         data: dto,
       });
+      return { message: 'Product Feature updated successfully' };
     } catch (error) {
       if (error.code === 'P2002') {
         throw new BadRequestException(

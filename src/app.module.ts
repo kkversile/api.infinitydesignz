@@ -22,11 +22,11 @@ import { CommonStatusModule } from './common-status/common-status.module';
 import { FeatureSetsModule } from './feature-sets/feature-sets.module';     
 import { FeatureListsModule } from './feature-lists/feature-lists.module';
 import { FilterTypesModule } from './filter-types/filter-types.module';
-import { FilterSetsModule } from './filter-sets/filter-sets.module';      // ✅ NEW
-import { FilterListsModule } from './filter-lists/filter-lists.module';  // ✅ NEW
+import { FilterSetsModule } from './filter-sets/filter-sets.module';      //  NEW
+import { FilterListsModule } from './filter-lists/filter-lists.module';  //  NEW
 import { CouponModule } from './coupons/coupon.module';
-import { PriceRangeModule } from './price-range/price-range.module'; // ✅ NEW
-import { UsersModule } from './users/users.module'; // ✅ Registered Users Module
+import { PriceRangeModule } from './price-range/price-range.module'; //  NEW
+import { UsersModule } from './users/users.module'; //  Registered Users Module
 import { WishlistModule } from './wishlist/wishlist.module'; 
 
 @Module({
@@ -43,11 +43,11 @@ import { WishlistModule } from './wishlist/wishlist.module';
     MainCategoryPromotionModule,
     ProductsModule,
     FeatureTypesModule,
-    FeatureSetsModule,     // ✅ Added here
-    FeatureListsModule,    // ✅ Added here
+    FeatureSetsModule,     //  Added here
+    FeatureListsModule,    //  Added here
     FilterTypesModule,
-    FilterSetsModule,      // ✅ Registered
-    FilterListsModule,     // ✅ Registered
+    FilterSetsModule,      //  Registered
+    FilterListsModule,     //  Registered
     CommonStatusModule,
     CouponModule,  
     PriceRangeModule,

@@ -8,7 +8,7 @@ export class ProductFeaturesController {
 
   @Post()
   create(@Body() dtos: CreateProductFeatureDto[]) {
-     return this.service.createOrUpdateMany(dtos); // ✅ for array payload
+     return this.service.createOrUpdateMany(dtos); //  for array payload
   }
 
   @Get(':id')
