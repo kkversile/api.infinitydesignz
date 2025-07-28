@@ -20,7 +20,7 @@ export class VariantsService {
 
   async findAll() {
     const variants = await this.prisma.variant.findMany();
-    return { message: 'Variants fetched successfully.', variants };
+    return  variants;
   }
 
   async findOne(id: number) {
@@ -28,7 +28,7 @@ export class VariantsService {
     if (!variant) {
       throw new BadRequestException('❌ Variant not found.');
     }
-    return { message: 'Variant fetched successfully.', variant };
+    return variant;
   }
 
   async update(id: number, data: any) {

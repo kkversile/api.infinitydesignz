@@ -44,10 +44,7 @@ export class WishlistService {
       include: { product: true },
     });
 
-    return {
-      message: 'Wishlist fetched successfully.',
-      data: list,
-    };
+    return list;
   }
 
   async remove(userId: number, productId: number) {
