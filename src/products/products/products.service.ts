@@ -11,89 +11,96 @@ import { CreateProductsDto, UpdateProductsDto } from './dto';
 export class ProductsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(dto: CreateProductsDto) {
-    const {
-      sku,
-      title,
-      description,
-      brandId,
-      categoryId,
-      colorId,
-      sizeId,
-      stock,
-      mrp,
-      sellingPrice,
-      searchKeywords,
-      status = true,
-      productDetails,
-      variants = [],
-    } = dto;
+ async create(dto: CreateProductsDto) {
+  const {
+    sku,
+    title,
+    description,
+    brandId,
+    categoryId,
+    colorId,
+    sizeId,
+    stock,
+    mrp,
+    sellingPrice,
+    searchKeywords,
+    status = true,
+    productDetails,
+    variants = [],
+  } = dto;
 
-    if (await this.prisma.product.findUnique({ where: { sku } })) {
-      throw new BadRequestException(`Product with SKU '${sku}' already exists.`);
-    }
+  // Check for existing SKU
+  if (await this.prisma.product.findUnique({ where: { sku } })) {
+    throw new BadRequestException(`Product with SKU '${sku}' already exists.`);
+  }
 
-    const checks = [
-      { id: brandId,    label: 'Brand',    model: this.prisma.brand },
-      { id: categoryId, label: 'Category', model: this.prisma.category },
-      { id: sizeId,     label: 'Size',     model: this.prisma.sizeUOM },
-      { id: colorId,    label: 'Color',    model: this.prisma.color },
-    ];
-    for (const { id, label, model } of checks) {
-      if (id && Number(id) > 0  && !(await (model as any).findUnique({ where: { id } }))) {
-        throw new BadRequestException(`${label} with ID '${id}' does not exist.`);
-      }
-    }
-
-    try {
-      const created = await this.prisma.product.create({
-        data: {
-          sku,
-          title,
-          description,
-          searchKeywords,
-          status,
-          stock,
-          mrp,
-          sellingPrice,
-
-          ...(!!brandId && Number(brandId) > 0 && { brand: { connect: { id: Number(brandId) } } }),
-          category: { connect: { id: categoryId } },
-          ...(sizeId  != null && { size:  { connect: { id: sizeId  } } }),
-          ...(colorId != null && { color: { connect: { id: colorId } } }),
-
-          productDetails: productDetails
-            ? {
-                create: {
-                  model:            productDetails.model,
-                  weight:           productDetails.weight,
-                  sla:              productDetails.sla,
-                  deliveryCharges:  productDetails.deliveryCharges,
-                },
-              }
-            : undefined,
-
-          variants: variants.length
-            ? {
-                create: variants.map(v => ({
-                  sku:          v.sku,
-                  stock:        v.stock,
-                  mrp:          v.mrp,
-                  sellingPrice: v.sellingPrice,
-                  ...(v.sizeId  != null && { size:  { connect: { id: v.sizeId  } } }),
-                  ...(v.colorId != null && { color: { connect: { id: v.colorId } } }),
-                })),
-              }
-            : undefined,
-        },
-      });
-
-      return { message: 'Product created successfully', data: created };
-    } catch (err) {
-      console.log(err);
-      throw new InternalServerErrorException('Error creating product');
+  // Validate foreign keys only if provided
+  const checks = [
+    { id: brandId,    label: 'Brand',    model: this.prisma.brand },
+    { id: categoryId, label: 'Category', model: this.prisma.category },
+    { id: sizeId,     label: 'Size',     model: this.prisma.sizeUOM },
+    { id: colorId,    label: 'Color',    model: this.prisma.color },
+  ];
+  for (const { id, label, model } of checks) {
+    if (id && Number(id) > 0) {
+      const exists = await (model as any).findUnique({ where: { id: Number(id) } });
+      if (!exists) throw new BadRequestException(`${label} with ID '${id}' does not exist.`);
     }
   }
+
+  try {
+    const created = await this.prisma.product.create({
+      data: {
+        sku,
+        title,
+        description,
+        searchKeywords,
+        status,
+        stock,
+        mrp,
+        sellingPrice,
+
+        ...(brandId && Number(brandId) > 0 && { brand: { connect: { id: Number(brandId) } } }),
+        ...(categoryId && { category: { connect: { id: Number(categoryId) } } }),
+        ...(sizeId && Number(sizeId) > 0 && { size: { connect: { id: Number(sizeId) } } }),
+        ...(colorId && Number(colorId) > 0 && { color: { connect: { id: Number(colorId) } } }),
+
+        productDetails: productDetails
+          ? {
+              create: {
+                model:           productDetails.model,
+                weight:          productDetails.weight,
+                sla:             productDetails.sla,
+                deliveryCharges: productDetails.deliveryCharges,
+              },
+            }
+          : undefined,
+
+        variants: variants.length
+          ? {
+              create: variants.map(v => ({
+                sku:          v.sku,
+                stock:        v.stock,
+                mrp:          v.mrp,
+                sellingPrice: v.sellingPrice,
+                ...(v.sizeId && Number(v.sizeId) > 0 && {
+                  size: { connect: { id: Number(v.sizeId) } },
+                }),
+                ...(v.colorId && Number(v.colorId) > 0 && {
+                  color: { connect: { id: Number(v.colorId) } },
+                }),
+              })),
+            }
+          : undefined,
+      },
+    });
+
+    return { message: 'Product created successfully', data: created };
+  } catch (err) {
+    console.error(err);
+    throw new InternalServerErrorException('Error creating product');
+  }
+}
 
   async findAll() {
   const products = await this.prisma.product.findMany({
@@ -263,93 +270,107 @@ export class ProductsService {
     });
     return !!p;
   }
+async update(id: number, dto: UpdateProductsDto) {
+  const existing = await this.prisma.product.findUnique({ where: { id } });
+  if (!existing) {
+    throw new NotFoundException(`Product ${id} not found`);
+  }
 
-  async update(id: number, dto: UpdateProductsDto) {
-    const existing = await this.prisma.product.findUnique({ where: { id } });
-    if (!existing) {
-      throw new NotFoundException(`Product ${id} not found`);
+  const {
+    sku,
+    title,
+    description,
+    brandId,
+    categoryId,
+    colorId,
+    sizeId,
+    stock,
+    mrp,
+    sellingPrice,
+    searchKeywords,
+    status,
+    productDetails,
+    variants = [],
+  } = dto;
+
+  // SKU duplication check
+  if (sku) {
+    const dup = await this.prisma.product.findFirst({
+      where: { sku, NOT: { id } },
+    });
+    if (dup) {
+      throw new BadRequestException(`Another product with SKU '${sku}' exists.`);
     }
+  }
 
-    const {
+  // ✅ Validate existence of provided foreign keys
+  const checks = [
+    { id: brandId,    label: 'Brand',    model: this.prisma.brand },
+    { id: categoryId, label: 'Category', model: this.prisma.category },
+    { id: sizeId,     label: 'Size',     model: this.prisma.sizeUOM },
+    { id: colorId,    label: 'Color',    model: this.prisma.color },
+  ];
+  for (const { id, label, model } of checks) {
+    if (id && Number(id) > 0) {
+      const exists = await (model as any).findUnique({ where: { id: Number(id) } });
+      if (!exists) throw new BadRequestException(`${label} with ID '${id}' does not exist.`);
+    }
+  }
+
+  const updated = await this.prisma.product.update({
+    where: { id },
+    data: {
       sku,
       title,
       description,
-      brandId,
-      categoryId,
-      colorId,
-      sizeId,
+      searchKeywords,
+      status,
       stock,
       mrp,
       sellingPrice,
-      searchKeywords,
-      status,
-      productDetails,
-      variants = [],
-    } = dto;
 
-    if (sku) {
-      const dup = await this.prisma.product.findFirst({
-        where: { sku, NOT: { id } },
-      });
-      if (dup) {
-        throw new BadRequestException(`Another product with SKU '${sku}' exists.`);
-      }
-    }
+      ...(brandId && Number(brandId) > 0 && { brand: { connect: { id: Number(brandId) } } }),
+      ...(categoryId && Number(categoryId) > 0 && { category: { connect: { id: Number(categoryId) } } }),
+      ...(sizeId && Number(sizeId) > 0 && { size: { connect: { id: Number(sizeId) } } }),
+      ...(colorId && Number(colorId) > 0 && { color: { connect: { id: Number(colorId) } } }),
 
-    const updated = await this.prisma.product.update({
-      where: { id },
-      data: {
-        sku,
-        title,
-        description,
-        searchKeywords,
-        status,
-        stock,
-        mrp,
-        sellingPrice,
-
-        ...(brandId     != null && { brand:    { connect: { id: brandId } } }),
-        ...(categoryId  != null && { category: { connect: { id: categoryId } } }),
-        ...(sizeId      != null && { size:     { connect: { id: sizeId  } } }),
-        ...(colorId     != null && { color:    { connect: { id: colorId } } }),
-
-        productDetails: productDetails
-          ? {
-              upsert: {
-                create: {
-                  model:            productDetails.model,
-                  weight:           productDetails.weight,
-                  sla:              productDetails.sla,
-                  deliveryCharges:  productDetails.deliveryCharges,
-                },
-                update: {
-                  model:            productDetails.model,
-                  weight:           productDetails.weight,
-                  sla:              productDetails.sla,
-                  deliveryCharges:  productDetails.deliveryCharges,
-                },
+      productDetails: productDetails
+        ? {
+            upsert: {
+              create: {
+                model:           productDetails.model,
+                weight:          productDetails.weight,
+                sla:             productDetails.sla,
+                deliveryCharges: productDetails.deliveryCharges,
               },
-            }
-          : undefined,
+              update: {
+                model:           productDetails.model,
+                weight:          productDetails.weight,
+                sla:             productDetails.sla,
+                deliveryCharges: productDetails.deliveryCharges,
+              },
+            },
+          }
+        : undefined,
 
-        variants: variants.length
-          ? {
-              deleteMany: {},
-              create: variants.map(v => ({
-                sku:          v.sku,
-                stock:        v.stock,
-                mrp:          v.mrp,
-                sellingPrice: v.sellingPrice,
-                ...(v.sizeId  != null && { size:  { connect: { id: v.sizeId  } } }),
-                ...(v.colorId != null && { color: { connect: { id: v.colorId } } }),
-              })),
-            }
-          : undefined,
-      },
-    });
+      variants: variants.length
+        ? {
+            deleteMany: {}, // clear existing
+            create: variants.map(v => ({
+              sku:          v.sku,
+              stock:        v.stock,
+              mrp:          v.mrp,
+              sellingPrice: v.sellingPrice,
+              ...(v.sizeId && Number(v.sizeId) > 0 && { size: { connect: { id: Number(v.sizeId) } } }),
+              ...(v.colorId && Number(v.colorId) > 0 && { color: { connect: { id: Number(v.colorId) } } }),
+            })),
+          }
+        : undefined,
+    },
+  });
 
-    return { message: 'Product updated successfully', data: updated };
-  }
+  return { message: 'Product updated successfully', data: updated };
+}
 
   async remove(id: number) {
     const product = await this.prisma.product.findUnique({
