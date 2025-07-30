@@ -40,6 +40,18 @@ export class ProductsController {
 
     return this.productsService.getProducts(parsed);
   }
+  
+ @Get('details')
+  async getProductDetails(
+    @Query('productId') productId: string,
+    @Query('variantId') variantId?: string,
+  ) {
+    if (!productId) throw new BadRequestException('productId is required');
+    return this.productsService.getProductDetails(
+      parseInt(productId),
+      variantId ? parseInt(variantId) : undefined,
+    );
+  }
 
   @Get(':id')
   findOne(@Param('id') id: string) {

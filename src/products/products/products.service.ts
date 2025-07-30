@@ -529,5 +529,49 @@ if (searchStr) {
   return final;
 }
 
+async getProductDetails(productId: number, variantId?: number) {
+  const product = await this.prisma.product.findUnique({
+    where: { id: productId },
+    include: {
+      brand: true,
+      size: true,
+      color: true,
+      productDetails: true,
+      variants: {
+        include: { size: true, color: true },
+      },
+      images: true,
+    },
+  });
+
+  if (!product) {
+    throw new NotFoundException(`Product with ID ${productId} not found`);
+  }
+
+  // ✅ Get product-level images
+  const productImages = product.images.filter(img => img.variantId === null);
+  const mainProductImage = productImages.find(img => img.isMain);
+  const additionalProductImages = productImages.filter(img => !img.isMain);
+
+  let selectedVariant: any = null;
+  let variantImages: any[] = [];
+  if (variantId) {
+    selectedVariant = product.variants.find(v => v.id === variantId);
+    if (!selectedVariant) {
+      throw new NotFoundException(`Variant with ID ${variantId} not found for this product`);
+    }
+    variantImages = product.images.filter(img => img.variantId === variantId);
+  }
+
+  return {
+    ...product,
+    images: {
+      main: mainProductImage || null,
+      additional: additionalProductImages,
+      variantImages,
+    },
+    selectedVariant: selectedVariant || null,
+  };
+}
 
 }
