@@ -17,15 +17,14 @@ export class WishlistService {
           },
         },
         update: {
-          quantity: dto.quantity ?? 1,
-          size: dto.size,
+          productId: dto.productId,
+          variantId: dto.variantId ?? 0,
         },
         create: {
           userId,
           productId: dto.productId,
           variantId: dto.variantId ?? 0,
-          quantity: dto.quantity ?? 1,
-          size: dto.size,
+         
         },
       });
 

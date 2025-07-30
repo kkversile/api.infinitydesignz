@@ -501,7 +501,7 @@ if (searchStr) {
     }
   }
 
-  console.log('🧾 Product Filter WHERE clause:', JSON.stringify(where, null, 2));
+  //console.log('🧾 Product Filter WHERE clause:', JSON.stringify(where, null, 2));
 
   const products = await this.prisma.product.findMany({
     where,

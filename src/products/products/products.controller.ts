@@ -16,24 +16,7 @@ export class ProductsController {
     return this.productsService.findAll();
   }
 
-
-
-  @Get('products/:id')
-  findOne(@Param('id') id: string) {
-    return this.productsService.findOne(+id);
-  }
-
-  @Put(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateProductsDto) {
-    return this.productsService.update(+id, dto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.productsService.remove(+id);
-  }
-
- @Get('search') // ✅ Now matches /products/search
+@Get('search') // ✅ Now matches /products/search
   async searchProducts(
     @Query('mainCategoryId') mainCategoryId: string,
     @Query('subCategoryId') subCategoryId: string,
@@ -57,4 +40,21 @@ export class ProductsController {
 
     return this.productsService.getProducts(parsed);
   }
+
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.productsService.findOne(+id);
+  }
+
+  @Put(':id')
+  update(@Param('id') id: string, @Body() dto: UpdateProductsDto) {
+    return this.productsService.update(+id, dto);
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.productsService.remove(+id);
+  }
+
+ 
 }
