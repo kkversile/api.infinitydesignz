@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Put, Delete } from '@nestjs/common';
+import { Controller, Get, Query,Post, Body, Param, Put, Delete,BadRequestException } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { CreateProductsDto, UpdateProductsDto } from './dto';
 
@@ -18,7 +18,7 @@ export class ProductsController {
 
 
 
-  @Get(':id')
+  @Get('products/:id')
   findOne(@Param('id') id: string) {
     return this.productsService.findOne(+id);
   }
@@ -31,5 +31,30 @@ export class ProductsController {
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.productsService.remove(+id);
+  }
+
+ @Get('search') // ✅ Now matches /products/search
+  async searchProducts(
+    @Query('mainCategoryId') mainCategoryId: string,
+    @Query('subCategoryId') subCategoryId: string,
+    @Query('listSubCatId') listSubCatId?: string,
+    @Query('brandId') brandId?: string,
+    @Query('searchStr') searchStr?: string,
+    @Query('filters') filters?: string // JSON stringified
+  ) {
+    const parsed = {
+      mainCategoryId: parseInt(mainCategoryId),
+      subCategoryId: parseInt(subCategoryId),
+      listSubCatId: listSubCatId ? parseInt(listSubCatId) : undefined,
+      brandId: brandId ? parseInt(brandId) : undefined,
+      searchStr,
+      filters: filters || '{}', // ✅ Avoid JSON parse error on undefined
+    };
+
+    if ( isNaN(parsed.subCategoryId)) {
+      throw new BadRequestException('categoryId and subCategoryId are required');
+    }
+
+    return this.productsService.getProducts(parsed);
   }
 }

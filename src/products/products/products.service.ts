@@ -408,4 +408,126 @@ async update(id: number, dto: UpdateProductsDto) {
 
     return { message: 'Product and related data deleted successfully' };
   }
+
+ async getProducts(query: {
+  mainCategoryId: number;
+  subCategoryId: number;
+  listSubCatId?: number;
+  brandId?: number;
+  searchStr?: string;
+  filters?: string; // stringified: { color: ['Red'], size: ['M'], filterListIds: [1,2] }
+}) {
+  const {
+    mainCategoryId,
+    subCategoryId,
+    listSubCatId,
+    brandId,
+    searchStr,
+    filters,
+  } = query;
+
+  const where: any = { AND: [] };
+
+  // 🧭 Hierarchical category filtering
+  if (listSubCatId) {
+    where.AND.push({ categoryId: listSubCatId });
+  } else if (subCategoryId) {
+    const subList = await this.prisma.category.findMany({
+      where: { parentId: subCategoryId },
+      select: { id: true },
+    });
+    const listIds = subList.map((c) => c.id);
+    if (listIds.length > 0) {
+      where.AND.push({ categoryId: { in: listIds } });
+    }
+  } else if (mainCategoryId) {
+    const subCats = await this.prisma.category.findMany({
+      where: { parentId: mainCategoryId },
+      select: { id: true },
+    });
+
+    const subCatIds = subCats.map((sc) => sc.id);
+    if (subCatIds.length > 0) {
+      const subSubCats = await this.prisma.category.findMany({
+        where: { parentId: { in: subCatIds } },
+        select: { id: true },
+      });
+      const allIds = subSubCats.map((c) => c.id);
+      if (allIds.length > 0) {
+        where.AND.push({ categoryId: { in: allIds } });
+      }
+    }
+  }
+
+  if (brandId) {
+    where.AND.push({ brandId });
+  }
+
+if (searchStr) {
+  where.AND.push({
+    OR: [
+      { title: { contains: searchStr } },
+      { description: { contains: searchStr } },
+      { sku: { contains: searchStr } },
+    ],
+  });
+}
+
+
+  const parsed = filters ? JSON.parse(filters) : {};
+  const { color = [], size = [], filterListIds = [] } = parsed;
+
+  // 🎨 Color filter
+  if (color.length > 0) {
+    const colorIds = await this.prisma.color.findMany({
+      where: { label: { in: color } },
+      select: { id: true },
+    });
+    const ids = colorIds.map((c) => c.id);
+    if (ids.length > 0) {
+      where.AND.push({ colorId: { in: ids } });
+    }
+  }
+
+  // 📏 Size filter
+  if (size.length > 0) {
+    const sizeIds = await this.prisma.sizeUOM.findMany({
+      where: { title: { in: size } },
+      select: { id: true },
+    });
+    const ids = sizeIds.map((s) => s.id);
+    if (ids.length > 0) {
+      where.AND.push({ sizeId: { in: ids } });
+    }
+  }
+
+  console.log('🧾 Product Filter WHERE clause:', JSON.stringify(where, null, 2));
+
+  const products = await this.prisma.product.findMany({
+    where,
+    include: {
+      brand: true,
+      size: true,
+      color: true,
+      category: true,
+      productDetails: true,
+      variants: {
+        include: { size: true, color: true },
+      },
+      images: true,
+      filters: true,
+    },
+  });
+
+  // 🔎 Filter by filterListIds (join table)
+  const final = filterListIds.length
+    ? products.filter((product) =>
+        product.filters.some((f) => filterListIds.includes(f.filterListId)),
+      )
+    : products;
+
+  return final;
+}
+
+
 }
