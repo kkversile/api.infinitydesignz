@@ -8,6 +8,20 @@ export class WishlistService {
 
   async add(userId: number, dto: AddToWishlistDto) {
     try {
+      // ✅ Check if user exists
+      const user = await this.prisma.user.findUnique({ where: { id: userId } });
+      if (!user) throw new NotFoundException('❌ User not found');
+
+      // ✅ Check if product exists
+      const product = await this.prisma.product.findUnique({ where: { id: dto.productId } });
+      if (!product) throw new NotFoundException('❌ Product not found');
+
+      // ✅ Optional: check variant if variantId is provided
+      if (dto.variantId) {
+        const variant = await this.prisma.variant.findUnique({ where: { id: dto.variantId } });
+        if (!variant) throw new NotFoundException('❌ Variant not found');
+      }
+
       const item = await this.prisma.wishlist.upsert({
         where: {
           userId_productId_variantId: {
@@ -24,16 +38,15 @@ export class WishlistService {
           userId,
           productId: dto.productId,
           variantId: dto.variantId ?? 0,
-         
         },
       });
 
       return {
-        message: 'Added to wishlist successfully.',
+        message: '✅ Added to wishlist successfully.',
         data: item,
       };
     } catch (error) {
-      throw new BadRequestException(`❌ Failed to add to wishlist: ${error.message}`);
+      throw new BadRequestException(`❌ Failed to add to wishlist: \n${error.message}`);
     }
   }
 
@@ -58,7 +71,7 @@ export class WishlistService {
       throw new NotFoundException('❌ No wishlist item found to remove.');
     }
 
-    return { message: 'Removed from wishlist successfully.' };
+    return { message: '🗑️ Removed from wishlist successfully.' };
   }
 
   async moveToCart(userId: number, productId: number) {
@@ -73,7 +86,7 @@ export class WishlistService {
 
     await this.remove(userId, productId);
 
-    // NOTE: Simulating cart addition logic here.
+    // TODO: Replace with actual cart service logic
     return { message: '🛒 Moved to cart successfully.' };
   }
 }
