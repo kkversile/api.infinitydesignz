@@ -7,48 +7,69 @@ export class WishlistService {
   constructor(private prisma: PrismaService) {}
 
   async add(userId: number, dto: AddToWishlistDto) {
-    try {
-      // ✅ Check if user exists
-      const user = await this.prisma.user.findUnique({ where: { id: userId } });
-      if (!user) throw new NotFoundException('❌ User not found');
+  try {
+    // ✅ Check if user exists
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
 
-      // ✅ Check if product exists
-      const product = await this.prisma.product.findUnique({ where: { id: dto.productId } });
-      if (!product) throw new NotFoundException('❌ Product not found');
+    // ✅ Check if product exists
+    const product = await this.prisma.product.findUnique({ where: { id: dto.productId } });
+    if (!product) throw new NotFoundException(' Product not found');
 
-      // ✅ Optional: check variant if variantId is provided
-      if (dto.variantId) {
-        const variant = await this.prisma.variant.findUnique({ where: { id: dto.variantId } });
-        if (!variant) throw new NotFoundException('❌ Variant not found');
-      }
+    // ✅ Determine the correct variantId
+    let variantId = dto.variantId ?? 0;
 
-      const item = await this.prisma.wishlist.upsert({
-        where: {
-          userId_productId_variantId: {
-            userId,
-            productId: dto.productId,
-            variantId: dto.variantId ?? 0,
-          },
-        },
-        update: {
-          productId: dto.productId,
-          variantId: dto.variantId ?? 0,
-        },
-        create: {
-          userId,
-          productId: dto.productId,
-          variantId: dto.variantId ?? 0,
-        },
+    if (!dto.variantId || dto.variantId === 0) {
+      // Get first variant of the product
+      const firstVariant = await this.prisma.variant.findFirst({
+        where: { productId: dto.productId },
+        orderBy: { id: 'asc' },
       });
 
-      return {
-        message: '✅ Added to wishlist successfully.',
-        data: item,
-      };
-    } catch (error) {
-      throw new BadRequestException(`❌ Failed to add to wishlist: \n${error.message}`);
+      if (!firstVariant) {
+        throw new NotFoundException('❌ No variants found for this product.');
+      }
+
+      variantId = firstVariant.id;
+    } else {
+      // Variant was supplied — validate it exists
+      const variant = await this.prisma.variant.findUnique({
+        where: { id: dto.variantId },
+      });
+
+      if (!variant) {
+        throw new NotFoundException(`❌ Variant ID ${dto.variantId} not found.`);
+      }
     }
+
+    // ✅ Upsert into wishlist
+    const item = await this.prisma.wishlist.upsert({
+      where: {
+        userId_productId_variantId: {
+          userId,
+          productId: dto.productId,
+          variantId,
+        },
+      },
+      update: {
+        productId: dto.productId,
+        variantId,
+      },
+      create: {
+        userId,
+        productId: dto.productId,
+        variantId,
+      },
+    });
+
+    return {
+      message: '✅ Added to wishlist successfully.',
+      data: item,
+    };
+  } catch (error) {
+    throw new BadRequestException(`❌ Failed to add to wishlist: \n${error.message}`);
   }
+}
 
   async getUserWishlist(userId: number) {
     const list = await this.prisma.wishlist.findMany({
@@ -68,10 +89,10 @@ export class WishlistService {
     });
 
     if (result.count === 0) {
-      throw new NotFoundException('❌ No wishlist item found to remove.');
+      throw new NotFoundException(' No wishlist item found to remove.');
     }
 
-    return { message: '🗑️ Removed from wishlist successfully.' };
+    return { message: ' Removed from wishlist successfully.' };
   }
 
   async moveToCart(userId: number, productId: number) {
