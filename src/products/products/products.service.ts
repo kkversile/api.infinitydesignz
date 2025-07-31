@@ -541,12 +541,45 @@ async getProductDetails(productId: number, variantId?: number) {
         include: { size: true, color: true },
       },
       images: true,
+      category: true,
     },
   });
 
   if (!product) {
     throw new NotFoundException(`Product with ID ${productId} not found`);
   }
+
+  // 🧠 Fetch sibling category IDs (same parent)
+  const siblingCategories = await this.prisma.category.findMany({
+    where: {
+      parentId: product.category.parentId,
+      id: { not: product.categoryId },
+    },
+    select: { id: true },
+  });
+
+  const siblingCategoryIds = siblingCategories.map(c => c.id);
+
+  // 🧠 Related products = same category or sibling categories
+  const relatedProducts = await this.prisma.product.findMany({
+    where: {
+      status: true,
+      id: { not: productId },
+      OR: [
+        { categoryId: product.categoryId },
+        { categoryId: { in: siblingCategoryIds } },
+      ],
+    },
+    take: 10,
+    include: {
+      brand: true,
+      images: {
+        where: { isMain: true, variantId: null },
+        take: 1,
+      },
+      category: true,
+    },
+  });
 
   // ✅ Get product-level images
   const productImages = product.images.filter(img => img.variantId === null);
@@ -571,7 +604,9 @@ async getProductDetails(productId: number, variantId?: number) {
       variantImages,
     },
     selectedVariant: selectedVariant || null,
+    relatedProducts,
   };
 }
+
 
 }
