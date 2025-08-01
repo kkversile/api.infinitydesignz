@@ -8,13 +8,13 @@ import {
   Body,
   Param,
   Req,
-  UseGuards
-} from '@nestjs/common';
-import { WishlistService } from './wishlist.service';
-import { AddToWishlistDto } from './dto/add-to-wishlist.dto';
-import { AuthGuard } from '../auth/auth.guard';
+  UseGuards,
+} from "@nestjs/common";
+import { WishlistService } from "./wishlist.service";
+import { AddToWishlistDto } from "./dto/add-to-wishlist.dto";
+import { AuthGuard } from "../auth/auth.guard";
 
-@Controller('wishlist')
+@Controller("wishlist")
 export class WishlistController {
   constructor(private readonly wishlistService: WishlistService) {}
 
@@ -31,14 +31,14 @@ export class WishlistController {
   }
 
   @UseGuards(AuthGuard)
-  @Delete(':productId')
-  removeFromWishlist(@Req() req, @Param('productId') productId: number) {
-    return this.wishlistService.remove(req.user.id, +productId);
+  @Delete(":wishlistId")
+  removeFromWishlist(@Req() req, @Param("wishlistId") wishlistId: number) {
+    return this.wishlistService.remove(req.user.id, +wishlistId);
   }
 
   @UseGuards(AuthGuard)
-  @Post('move-to-cart/:productId')
-  moveToCart(@Req() req, @Param('productId') productId: number) {
+  @Post("move-to-cart/:productId")
+  moveToCart(@Req() req, @Param("productId") productId: number) {
     return this.wishlistService.moveToCart(req.user.id, +productId);
   }
 }

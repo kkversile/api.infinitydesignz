@@ -30,8 +30,8 @@ export class ProductsController {
     @Query('filters') filters?: string // JSON stringified
   ) {
     const parsed = {
-      mainCategoryId: parseInt(mainCategoryId),
-      subCategoryId: parseInt(subCategoryId),
+      mainCategoryId:mainCategoryId ? parseInt(mainCategoryId): 0,
+      subCategoryId: subCategoryId ? parseInt(subCategoryId) : 0,
       listSubCatId: listSubCatId ? parseInt(listSubCatId) : undefined,
       brandId: brandId ? parseInt(brandId) : undefined,
       searchStr,

@@ -3,6 +3,7 @@ import {
   ExecutionContext,
   Injectable,
   UnauthorizedException,
+  BadRequestException
 } from '@nestjs/common';
 
 import { JwtService } from '@nestjs/jwt';
@@ -33,7 +34,9 @@ export class AuthGuard implements CanActivate {
     } catch {
       throw new UnauthorizedException('Token verification failed');
     }
-
+if (!payload.id) {
+      throw new BadRequestException('User ID is missing in token payload');
+    }
     const user = await this.usersService.getUserById(payload.id);
     if (!user) {
       throw new UnauthorizedException('User not found');

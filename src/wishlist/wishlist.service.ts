@@ -1,6 +1,10 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AddToWishlistDto } from './dto/add-to-wishlist.dto';
+import { PRODUCT_IMAGE_PATH } from '../config/constants'; // ✅ Make sure this import exists at top
+
+const formatImageUrl = (fileName: string | null) =>
+  fileName ? `${PRODUCT_IMAGE_PATH}${fileName}` : null;
 
 @Injectable()
 export class WishlistService {
@@ -71,29 +75,82 @@ export class WishlistService {
   }
 }
 
-  async getUserWishlist(userId: number) {
-    const list = await this.prisma.wishlist.findMany({
-      where: { userId },
-      include: { product: true },
-    });
-
-    return list;
-  }
-
-  async remove(userId: number, productId: number) {
-    const result = await this.prisma.wishlist.deleteMany({
-      where: {
-        userId,
-        productId,
+async getUserWishlist(userId: number) {
+  const list = await this.prisma.wishlist.findMany({
+    where: { userId },
+    include: {
+      product: {
+        include: {
+          images: {
+            where: { isMain: true },
+            select: {
+              url: true,
+              alt: true,
+            },
+          },
+          brand: {
+            select: { name: true },
+          },
+        },
       },
-    });
+      variant: {
+        include: {
+          images: {
+            where: { isMain: true },
+            select: {
+              url: true,
+              alt: true,
+            },
+          },
+          size: true,
+          color: true,
+        },
+      },
+    },
+  });
 
-    if (result.count === 0) {
-      throw new NotFoundException(' No wishlist item found to remove.');
-    }
+  return list.map((item) => {
+    const image =
+      item.variant?.images?.[0]?.url ||
+      item.product?.images?.[0]?.url ||
+      null;
 
-    return { message: ' Removed from wishlist successfully.' };
+    const imageAlt =
+      item.variant?.images?.[0]?.alt ||
+      item.product?.images?.[0]?.alt ||
+      '';
+
+    return {
+      id: item.id,
+      productId: item.productId,
+      variantId: item.variantId,
+      title: item.product?.title,
+      brand: item.product?.brand?.name,
+      price: item.variant?.sellingPrice || item.product?.sellingPrice,
+      mrp: item.variant?.mrp || item.product?.mrp,
+      color: item.variant?.color?.label,
+      size: item.variant?.size?.title,
+      imageUrl: formatImageUrl(image),
+      imageAlt: imageAlt,
+    };
+  });
+}
+
+async remove(userId: number, wishlistId: number) {
+  const wishlist = await this.prisma.wishlist.findUnique({
+    where: { id: wishlistId },
+  });
+
+  if (!wishlist || wishlist.userId !== userId) {
+    throw new NotFoundException('❌ Wishlist item not found or unauthorized');
   }
+
+  await this.prisma.wishlist.delete({
+    where: { id: wishlistId },
+  });
+
+  return { message: '✅ Removed from wishlist successfully.' };
+}
 
   async moveToCart(userId: number, productId: number) {
     const item = await this.prisma.wishlist.findFirst({
