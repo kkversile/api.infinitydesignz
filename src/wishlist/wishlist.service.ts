@@ -24,17 +24,8 @@ export class WishlistService {
     let variantId = dto.variantId ?? 0;
 
     if (!dto.variantId || dto.variantId === 0) {
-      // Get first variant of the product
-      const firstVariant = await this.prisma.variant.findFirst({
-        where: { productId: dto.productId },
-        orderBy: { id: 'asc' },
-      });
-
-      if (!firstVariant) {
-        throw new NotFoundException('❌ No variants found for this product.');
-      }
-
-      variantId = firstVariant.id;
+      
+      variantId =0;
     } else {
       // Variant was supplied — validate it exists
       const variant = await this.prisma.variant.findUnique({
@@ -83,81 +74,73 @@ export class WishlistService {
         include: {
           images: {
             where: { isMain: true },
-            select: {
-              url: true,
-              alt: true,
-            },
+            select: { url: true, alt: true },
           },
-          brand: {
-            select: { name: true },
-          },
-          color: {
-            select: { label: true }, // ✅ include product.color
-          },
-          size: {
-            select: { title: true }, // ✅ include product.size
-          },
+          brand: { select: { name: true } },
+          color: { select: { label: true } },
+          size: { select: { title: true } },
         },
       },
       variant: {
         include: {
           images: {
             where: { isMain: true },
-            select: {
-              url: true,
-              alt: true,
-            },
+            select: { url: true, alt: true },
           },
-          size: {
-            select: { title: true }, // ✅ variant size
-          },
-          color: {
-            select: { label: true }, // ✅ variant color
-          },
+          size: { select: { title: true } },
+          color: { select: { label: true } },
         },
       },
     },
   });
 
   return list.map((item) => {
-    const mainImage =
-      item.variant?.images?.[0]?.url || item.product?.images?.[0]?.url || null;
-    const imageAlt =
-      item.variant?.images?.[0]?.alt || item.product?.images?.[0]?.alt || '';
+    const useVariant = item.variantId && item.variantId > 0;
+
+    const mainImage = useVariant
+      ? item.variant?.images?.[0]?.url || item.product?.images?.[0]?.url || null
+      : item.product?.images?.[0]?.url || null;
+
+    const imageAlt = useVariant
+      ? item.variant?.images?.[0]?.alt || item.product?.images?.[0]?.alt || ''
+      : item.product?.images?.[0]?.alt || '';
 
     const formattedImageUrl = formatImageUrl(mainImage);
 
-    const productInfo = {
-      title: item.product?.title,
-      brand: item.product?.brand?.name,
-      price: item.product?.sellingPrice,
-      mrp: item.product?.mrp,
-      color: item.product?.color?.label || null,
-      size: item.product?.size?.title || null,
-      imageUrl: formattedImageUrl,
-      imageAlt,
-    };
-
-    const variantInfo = {
-      title: item.product?.title,
-      brand: item.product?.brand?.name,
-      price: item.variant?.sellingPrice || item.product?.sellingPrice,
-      mrp: item.variant?.mrp || item.product?.mrp,
-      color: item.variant?.color?.label || null,
-      size: item.variant?.size?.title || null,
-      imageUrl: formattedImageUrl,
-      imageAlt,
-    };
-
-    return {
+    const response: any = {
       id: item.id,
       productId: item.productId,
       variantId: item.variantId,
-      product: productInfo,
-      variant: variantInfo,
     };
+
+    if (useVariant) {
+      response.variant = {
+        title: item.product?.title,
+        brand: item.product?.brand?.name,
+        price: item.variant?.sellingPrice || item.product?.sellingPrice,
+        mrp: item.variant?.mrp || item.product?.mrp,
+        color: item.variant?.color?.label || null,
+        size: item.variant?.size?.title || null,
+        imageUrl: formattedImageUrl,
+        imageAlt,
+      };
+    } else {
+      response.product = {
+        title: item.product?.title,
+        brand: item.product?.brand?.name,
+        price: item.product?.sellingPrice,
+        mrp: item.product?.mrp,
+        color: item.product?.color?.label || null,
+        size: item.product?.size?.title || null,
+        imageUrl: formattedImageUrl,
+        imageAlt,
+      };
+    }
+
+    return response;
   });
 }
+
 
 
 async remove(userId: number, wishlistId: number) {
