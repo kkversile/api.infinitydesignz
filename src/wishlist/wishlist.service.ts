@@ -75,7 +75,7 @@ export class WishlistService {
   }
 }
 
-async getUserWishlist(userId: number) {
+ async getUserWishlist(userId: number) {
   const list = await this.prisma.wishlist.findMany({
     where: { userId },
     include: {
@@ -91,6 +91,12 @@ async getUserWishlist(userId: number) {
           brand: {
             select: { name: true },
           },
+          color: {
+            select: { label: true }, // ✅ include product.color
+          },
+          size: {
+            select: { title: true }, // ✅ include product.size
+          },
         },
       },
       variant: {
@@ -102,39 +108,57 @@ async getUserWishlist(userId: number) {
               alt: true,
             },
           },
-          size: true,
-          color: true,
+          size: {
+            select: { title: true }, // ✅ variant size
+          },
+          color: {
+            select: { label: true }, // ✅ variant color
+          },
         },
       },
     },
   });
 
   return list.map((item) => {
-    const image =
-      item.variant?.images?.[0]?.url ||
-      item.product?.images?.[0]?.url ||
-      null;
-
+    const mainImage =
+      item.variant?.images?.[0]?.url || item.product?.images?.[0]?.url || null;
     const imageAlt =
-      item.variant?.images?.[0]?.alt ||
-      item.product?.images?.[0]?.alt ||
-      '';
+      item.variant?.images?.[0]?.alt || item.product?.images?.[0]?.alt || '';
+
+    const formattedImageUrl = formatImageUrl(mainImage);
+
+    const productInfo = {
+      title: item.product?.title,
+      brand: item.product?.brand?.name,
+      price: item.product?.sellingPrice,
+      mrp: item.product?.mrp,
+      color: item.product?.color?.label || null,
+      size: item.product?.size?.title || null,
+      imageUrl: formattedImageUrl,
+      imageAlt,
+    };
+
+    const variantInfo = {
+      title: item.product?.title,
+      brand: item.product?.brand?.name,
+      price: item.variant?.sellingPrice || item.product?.sellingPrice,
+      mrp: item.variant?.mrp || item.product?.mrp,
+      color: item.variant?.color?.label || null,
+      size: item.variant?.size?.title || null,
+      imageUrl: formattedImageUrl,
+      imageAlt,
+    };
 
     return {
       id: item.id,
       productId: item.productId,
       variantId: item.variantId,
-      title: item.product?.title,
-      brand: item.product?.brand?.name,
-      price: item.variant?.sellingPrice || item.product?.sellingPrice,
-      mrp: item.variant?.mrp || item.product?.mrp,
-      color: item.variant?.color?.label,
-      size: item.variant?.size?.title,
-      imageUrl: formatImageUrl(image),
-      imageAlt: imageAlt,
+      product: productInfo,
+      variant: variantInfo,
     };
   });
 }
+
 
 async remove(userId: number, wishlistId: number) {
   const wishlist = await this.prisma.wishlist.findUnique({
