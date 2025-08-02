@@ -580,7 +580,7 @@ model Wishlist {
   id        Int      @id @default(autoincrement())
   userId    Int
   productId Int
-  variantId Int      @default(0)
+  variantId Int?
   size      String?
   quantity  Int      @default(1)
   createdAt DateTime @default(now())
