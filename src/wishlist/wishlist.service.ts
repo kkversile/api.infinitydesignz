@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AddToWishlistDto } from './dto/add-to-wishlist.dto';
-import { PRODUCT_IMAGE_PATH } from '../config/constants'; // ✅ Make sure this import exists at top
+import { PRODUCT_IMAGE_PATH } from '../config/constants';
 
 const formatImageUrl = (fileName: string | null) =>
   fileName ? `${PRODUCT_IMAGE_PATH}${fileName}` : null;
@@ -12,50 +12,47 @@ export class WishlistService {
 
   async add(userId: number, dto: AddToWishlistDto) {
   try {
-    // ✅ Check if user exists
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
 
-    // ✅ Check if product exists
     const product = await this.prisma.product.findUnique({ where: { id: dto.productId } });
-    if (!product) throw new NotFoundException(' Product not found');
+    if (!product) throw new NotFoundException('Product not found');
 
-    // ✅ Determine the correct variantId
-    let variantId = dto.variantId ?? 0;
+    // ✅ Variant check
+    const variantId = dto.variantId && dto.variantId > 0 ? dto.variantId : 0;
 
-    if (!dto.variantId || dto.variantId === 0) {
-      
-      variantId =0;
-    } else {
-      // Variant was supplied — validate it exists
-      const variant = await this.prisma.variant.findUnique({
-        where: { id: dto.variantId },
-      });
-
-      if (!variant) {
-        throw new NotFoundException(`❌ Variant ID ${dto.variantId} not found.`);
-      }
+    if (variantId > 0) {
+      const variant = await this.prisma.variant.findUnique({ where: { id: variantId } });
+      if (!variant) throw new NotFoundException(`Variant ID ${variantId} not found.`);
     }
 
-    // ✅ Upsert into wishlist
-    const item = await this.prisma.wishlist.upsert({
+    // ✅ Manual upsert
+    const existing = await this.prisma.wishlist.findFirst({
       where: {
-        userId_productId_variantId: {
-          userId,
-          productId: dto.productId,
-          variantId,
-        },
-      },
-      update: {
-        productId: dto.productId,
-        variantId,
-      },
-      create: {
         userId,
         productId: dto.productId,
         variantId,
       },
     });
+
+    let item;
+    if (existing) {
+      item = await this.prisma.wishlist.update({
+        where: { id: existing.id },
+        data: {
+          productId: dto.productId,
+          variantId,
+        },
+      });
+    } else {
+      item = await this.prisma.wishlist.create({
+        data: {
+          userId,
+          productId: dto.productId,
+          variantId,
+        },
+      });
+    }
 
     return {
       message: '✅ Added to wishlist successfully.',
@@ -66,98 +63,97 @@ export class WishlistService {
   }
 }
 
- async getUserWishlist(userId: number) {
-  const list = await this.prisma.wishlist.findMany({
-    where: { userId },
-    include: {
-      product: {
-        include: {
-          images: {
-            where: { isMain: true },
-            select: { url: true, alt: true },
+
+  async getUserWishlist(userId: number) {
+    const list = await this.prisma.wishlist.findMany({
+      where: { userId },
+      include: {
+        product: {
+          include: {
+            images: {
+              where: { isMain: true },
+              select: { url: true, alt: true },
+            },
+            brand: { select: { name: true } },
+            color: { select: { label: true } },
+            size: { select: { title: true } },
           },
-          brand: { select: { name: true } },
-          color: { select: { label: true } },
-          size: { select: { title: true } },
+        },
+        variant: {
+          include: {
+            images: {
+              where: { isMain: true },
+              select: { url: true, alt: true },
+            },
+            size: { select: { title: true } },
+            color: { select: { label: true } },
+          },
         },
       },
-      variant: {
-        include: {
-          images: {
-            where: { isMain: true },
-            select: { url: true, alt: true },
-          },
-          size: { select: { title: true } },
-          color: { select: { label: true } },
-        },
-      },
-    },
-  });
+    });
 
-  return list.map((item) => {
-    const useVariant = item.variantId && item.variantId > 0;
+    return list.map((item) => {
+      const useVariant = item.variantId && item.variantId > 0;
 
-    const mainImage = useVariant
-      ? item.variant?.images?.[0]?.url || item.product?.images?.[0]?.url || null
-      : item.product?.images?.[0]?.url || null;
+      const mainImage = useVariant
+        ? item.variant?.images?.[0]?.url || item.product?.images?.[0]?.url || null
+        : item.product?.images?.[0]?.url || null;
 
-    const imageAlt = useVariant
-      ? item.variant?.images?.[0]?.alt || item.product?.images?.[0]?.alt || ''
-      : item.product?.images?.[0]?.alt || '';
+      const imageAlt = useVariant
+        ? item.variant?.images?.[0]?.alt || item.product?.images?.[0]?.alt || ''
+        : item.product?.images?.[0]?.alt || '';
 
-    const formattedImageUrl = formatImageUrl(mainImage);
+      const formattedImageUrl = formatImageUrl(mainImage);
 
-    const response: any = {
-      id: item.id,
-      productId: item.productId,
-      variantId: item.variantId,
-    };
-
-    if (useVariant) {
-      response.variant = {
-        title: item.product?.title,
-        brand: item.product?.brand?.name,
-        price: item.variant?.sellingPrice || item.product?.sellingPrice,
-        mrp: item.variant?.mrp || item.product?.mrp,
-        color: item.variant?.color?.label || null,
-        size: item.variant?.size?.title || null,
-        imageUrl: formattedImageUrl,
-        imageAlt,
+      const response: any = {
+        id: item.id,
+        productId: item.productId,
+        variantId: item.variantId,
       };
-    } else {
-      response.product = {
-        title: item.product?.title,
-        brand: item.product?.brand?.name,
-        price: item.product?.sellingPrice,
-        mrp: item.product?.mrp,
-        color: item.product?.color?.label || null,
-        size: item.product?.size?.title || null,
-        imageUrl: formattedImageUrl,
-        imageAlt,
-      };
-    }
 
-    return response;
-  });
-}
+      if (useVariant) {
+        response.variant = {
+          title: item.product?.title,
+          brand: item.product?.brand?.name,
+          price: item.variant?.sellingPrice || item.product?.sellingPrice,
+          mrp: item.variant?.mrp || item.product?.mrp,
+          color: item.variant?.color?.label || null,
+          size: item.variant?.size?.title || null,
+          imageUrl: formattedImageUrl,
+          imageAlt,
+        };
+      } else {
+        response.product = {
+          title: item.product?.title,
+          brand: item.product?.brand?.name,
+          price: item.product?.sellingPrice,
+          mrp: item.product?.mrp,
+          color: item.product?.color?.label || null,
+          size: item.product?.size?.title || null,
+          imageUrl: formattedImageUrl,
+          imageAlt,
+        };
+      }
 
-
-
-async remove(userId: number, wishlistId: number) {
-  const wishlist = await this.prisma.wishlist.findUnique({
-    where: { id: wishlistId },
-  });
-
-  if (!wishlist || wishlist.userId !== userId) {
-    throw new NotFoundException('❌ Wishlist item not found or unauthorized');
+      return response;
+    });
   }
 
-  await this.prisma.wishlist.delete({
-    where: { id: wishlistId },
-  });
+  async remove(userId: number, wishlistId: number) {
+    const wishlist = await this.prisma.wishlist.findUnique({
+      where: { id: wishlistId },
+    });
 
-  return { message: '✅ Removed from wishlist successfully.' };
-}
+    if (!wishlist || wishlist.userId !== userId) {
+      throw new NotFoundException('❌ Wishlist item not found or unauthorized');
+    }
+
+    await this.prisma.wishlist.delete({
+      where: { id: wishlistId },
+    });
+
+    return { message: '✅ Removed from wishlist successfully.' };
+  }
 
   async moveToCart(userId: number, productId: number) {
     const item = await this.prisma.wishlist.findFirst({
@@ -169,9 +165,8 @@ async remove(userId: number, wishlistId: number) {
 
     if (!item) throw new NotFoundException('❌ Wishlist item not found.');
 
-    await this.remove(userId, productId);
+    await this.remove(userId, item.id);
 
-    // TODO: Replace with actual cart service logic
     return { message: '🛒 Moved to cart successfully.' };
   }
 }
