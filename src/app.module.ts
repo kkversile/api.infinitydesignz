@@ -28,6 +28,7 @@ import { CouponModule } from './coupons/coupon.module';
 import { PriceRangeModule } from './price-range/price-range.module'; //  NEW
 import { UsersModule } from './users/users.module'; //  Registered Users Module
 import { WishlistModule } from './wishlist/wishlist.module'; 
+import { CartModule } from './cart/cart.module'; 
 
 @Module({
   imports: [      
@@ -53,6 +54,7 @@ import { WishlistModule } from './wishlist/wishlist.module';
     PriceRangeModule,
     UsersModule,
     WishlistModule,
+    CartModule,
   ],
 })
 export class AppModule {}
