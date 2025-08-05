@@ -7,11 +7,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum DeliveryOption {
-  STANDARD
-  EXPRESS
-  STORE_PICKUP
-}
+
 
 enum PaymentMethod {
   UPI
@@ -442,48 +438,61 @@ enum UserRole {
 }
 
 model Address {
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  label     String // "Home", "Office"
-  name      String
-  phone     String
-  address1  String
-  address2  String?
-  city      String
-  state     String
-  zipCode   String
-  createdAt DateTime @default(now())
+id           Int      @id @default(autoincrement())
+  userId       Int
+  name         String
+  buildingName String
+  flatNumber   String
+  addressLine1 String
+  addressLine2 String
+  city         String
+  state        String
+  pincode      String
+  phone        String
+  label        String     // Home | Office | Other
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
-  user   User    @relation(fields: [userId], references: [id])
+  user User @relation(fields: [userId], references: [id])
   orders Order[]
 
   @@map("user_addresses")
 }
-
 model Order {
-  id            Int            @id @default(autoincrement())
-  userId        Int
-  addressId     Int
-  deliveryType  DeliveryOption
-  paymentMethod PaymentMethod
-  couponId      Int? // optional
-  status        OrderStatus    @default(PENDING)
-  subtotal      Float
-  shippingFee   Float
-  gst           Float
-  totalAmount   Float
-  note          String?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id               Int             @id @default(autoincrement())
+  userId           Int
+  addressId        Int
+  deliveryOptionId Int             // ✅ FK to DeliveryOption
+  paymentMethod    PaymentMethod
+  couponId         Int?            // optional
+  status           OrderStatus     @default(PENDING)
+  subtotal         Float
+  shippingFee      Float
+  gst              Float
+  totalAmount      Float
+  note             String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
 
-  user    User        @relation(fields: [userId], references: [id])
-  address Address     @relation(fields: [addressId], references: [id])
-  coupon  Coupon?     @relation(fields: [couponId], references: [id])
-  items   OrderItem[]
-  payment Payment?
+  user             User            @relation(fields: [userId], references: [id])
+  address          Address         @relation(fields: [addressId], references: [id])
+  coupon           Coupon?         @relation(fields: [couponId], references: [id])
+  deliveryOption   DeliveryOption  @relation(fields: [deliveryOptionId], references: [id]) // ✅
+  items            OrderItem[]
+  payment          Payment?
 
   @@map("orders")
 }
+
+model DeliveryOption {
+  id          Int     @id @default(autoincrement())
+  name        String
+  description String?
+  fee         Float
+  days        String
+  orders      Order[]
+}
+
 
 model OrderItem {
   id        Int   @id @default(autoincrement())
@@ -500,6 +509,7 @@ model OrderItem {
 
   @@map("order_items")
 }
+
 
 model Payment {
   id            Int           @id @default(autoincrement())

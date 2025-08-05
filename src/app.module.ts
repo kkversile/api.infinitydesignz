@@ -28,7 +28,12 @@ import { CouponModule } from './coupons/coupon.module';
 import { PriceRangeModule } from './price-range/price-range.module'; //  NEW
 import { UsersModule } from './users/users.module'; //  Registered Users Module
 import { WishlistModule } from './wishlist/wishlist.module'; 
+import { AddressModule } from './addresses/address.module'; 
+
 import { CartModule } from './cart/cart.module'; 
+import { OrdersModule } from './orders/orders.module';
+import { DeliveryOptionsModule } from './delivery-options/delivery-options.module';
+
 
 @Module({
   imports: [      
@@ -54,7 +59,10 @@ import { CartModule } from './cart/cart.module';
     PriceRangeModule,
     UsersModule,
     WishlistModule,
+    AddressModule,
     CartModule,
+    OrdersModule,
+    DeliveryOptionsModule
   ],
 })
 export class AppModule {}
