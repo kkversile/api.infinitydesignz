@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString } from 'class-validator';
+import { IsNotEmpty, IsString,IsOptional,IsBoolean } from 'class-validator';
 
 export class CreateAddressDto {
   @IsString()
@@ -39,4 +39,8 @@ export class CreateAddressDto {
   @IsString()
   @IsNotEmpty()
   label: string; // Home / Office / Other
+
+  @IsOptional()
+  @IsBoolean()
+  default?: boolean;
 }

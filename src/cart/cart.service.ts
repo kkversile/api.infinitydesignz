@@ -71,81 +71,110 @@ export class CartService {
     };
   }
 
-  async getUserCart(userId: number) {
-    const list = await this.prisma.cartItem.findMany({
-      where: { userId },
+async getUserCart(userId: number) {
+  const allCartItems = await this.prisma.cartItem.findMany({
+    where: { userId },
+  });
+
+  const filteredCartItems = [];
+
+  for (const item of allCartItems) {
+    const product = await this.prisma.product.findUnique({
+      where: { id: item.productId },
       include: {
-        product: {
-          include: {
-            images: {
-              where: { isMain: true },
-              select: { url: true, alt: true },
-            },
-            brand: { select: { name: true } },
-            color: { select: { label: true } },
-            size: { select: { title: true } },
-          },
-        },
-        variant: {
-          include: {
-            images: {
-              where: { isMain: true },
-              select: { url: true, alt: true },
-            },
-            size: { select: { title: true } },
-            color: { select: { label: true } },
-          },
-        },
+        images: { where: { isMain: true }, select: { url: true, alt: true } },
+        brand: { select: { name: true } },
+        color: { select: { label: true } },
+        size: { select: { title: true } },
       },
     });
 
-    return list.map((item) => {
-      const useVariant = item.variantId !== null;
+    if (!product) continue; // skip deleted products
 
-      const mainImage = useVariant
-        ? item.variant?.images?.[0]?.url || item.product?.images?.[0]?.url || null
-        : item.product?.images?.[0]?.url || null;
+    const variant = item.variantId
+      ? await this.prisma.variant.findUnique({
+          where: { id: item.variantId },
+          include: {
+            images: { where: { isMain: true }, select: { url: true, alt: true } },
+            size: { select: { title: true } },
+            color: { select: { label: true } },
+          },
+        })
+      : null;
 
-      const imageAlt = useVariant
-        ? item.variant?.images?.[0]?.alt || item.product?.images?.[0]?.alt || ''
-        : item.product?.images?.[0]?.alt || '';
-
-      const formattedImageUrl = formatImageUrl(mainImage);
-
-      const response: any = {
-        id: item.id,
-        productId: item.productId,
-        variantId: item.variantId,
-        quantity: item.quantity,
-      };
-
-      if (useVariant) {
-        response.variant = {
-          title: item.product?.title,
-          brand: item.product?.brand?.name,
-          price: item.variant?.sellingPrice || item.product?.sellingPrice,
-          mrp: item.variant?.mrp || item.product?.mrp,
-          color: item.variant?.color?.label || null,
-          size: item.variant?.size?.title || null,
-          imageUrl: formattedImageUrl,
-          imageAlt,
-        };
-      } else {
-        response.product = {
-          title: item.product?.title,
-          brand: item.product?.brand?.name,
-          price: item.product?.sellingPrice,
-          mrp: item.product?.mrp,
-          color: item.product?.color?.label || null,
-          size: item.product?.size?.title || null,
-          imageUrl: formattedImageUrl,
-          imageAlt,
-        };
-      }
-
-      return response;
-    });
+    filteredCartItems.push({ ...item, product, variant });
   }
+
+  let totalMRP = 0;
+  let totalSellingPrice = 0;
+
+  const items = filteredCartItems.map((item) => {
+    const useVariant = item.variant !== null;
+
+    const mainImage = useVariant
+      ? item.variant?.images?.[0]?.url || item.product?.images?.[0]?.url || null
+      : item.product?.images?.[0]?.url || null;
+
+    const imageAlt = useVariant
+      ? item.variant?.images?.[0]?.alt || item.product?.images?.[0]?.alt || ''
+      : item.product?.images?.[0]?.alt || '';
+
+    const formattedImageUrl = formatImageUrl(mainImage);
+
+    const price = useVariant
+      ? item.variant?.sellingPrice ?? item.product?.sellingPrice
+      : item.product?.sellingPrice;
+
+    const mrp = useVariant
+      ? item.variant?.mrp ?? item.product?.mrp
+      : item.product?.mrp;
+
+    totalMRP += (mrp || 0) * item.quantity;
+    totalSellingPrice += (price || 0) * item.quantity;
+
+    const productData = {
+      title: item.product?.title,
+      brand: item.product?.brand?.name,
+      price,
+      mrp,
+      color: useVariant
+        ? item.variant?.color?.label
+        : item.product?.color?.label,
+      size: useVariant
+        ? item.variant?.size?.title
+        : item.product?.size?.title,
+      imageUrl: formattedImageUrl,
+      imageAlt,
+    };
+
+    return {
+      id: item.id,
+      productId: item.productId,
+      variantId: item.variantId,
+      quantity: item.quantity,
+      [useVariant ? 'variant' : 'product']: productData,
+    };
+  });
+
+  // Dummy coupon logic for now
+  const couponDiscount = 1000;
+  const platformFee = 20;
+  const shippingFee = 80;
+
+  return {
+    items,
+    priceSummary: {
+      totalMRP,
+      discountOnMRP: totalMRP - totalSellingPrice,
+      couponDiscount,
+      totalAfterDiscount: totalSellingPrice - couponDiscount,
+      platformFee,
+      shippingFee,
+      finalPayable: totalSellingPrice - couponDiscount + platformFee + shippingFee,
+    },
+  };
+}
+
 
   async removeFromCart(userId: number, cartId: number) {
     const cart = await this.prisma.cartItem.findUnique({
