@@ -83,8 +83,7 @@ export class CouponService {
       message: 'Coupon deleted successfully',
     };
   }
-
-  async applyCouponToCart(userId: number, code: string) {
+async applyCouponToCart(userId: number, code: string) {
   const coupon = await this.prisma.coupon.findFirst({
     where: { code, status: true },
   });
@@ -104,8 +103,16 @@ export class CouponService {
     },
   });
 
-  const rawCart = await this.prisma.cartItem.findMany({ where: { userId } });
+  // ✅ Get category name if LIST_SUBMENU
+  let listSubCategoryName = '';
+  if (coupon.type === 'LIST_SUBMENU' && coupon.listSubMenuId) {
+    const listSubCategory = await this.prisma.category.findUnique({
+      where: { id: coupon.listSubMenuId },
+    });
+    listSubCategoryName = listSubCategory?.title ?? '';
+  }
 
+  const rawCart = await this.prisma.cartItem.findMany({ where: { userId } });
   const cartItems = [];
 
   for (const item of rawCart) {
@@ -113,6 +120,7 @@ export class CouponService {
       where: { id: item.productId },
       include: {
         brand: true,
+        category: true,
         images: { where: { isMain: true }, select: { url: true, alt: true } },
       },
     });
@@ -155,12 +163,17 @@ export class CouponService {
     totalMRP += (mrp || 0) * item.quantity;
     totalSellingPrice += (price || 0) * item.quantity;
 
-    // Apply only on eligible items (e.g. brand)
-    if (
+    const isBrandMatch =
       coupon.type === 'BRAND' &&
       coupon.brandId &&
-      item.product?.brand?.id === coupon.brandId
-    ) {
+      item.product?.brand?.id === coupon.brandId;
+
+    const isListSubMatch =
+      coupon.type === 'LIST_SUBMENU' &&
+      coupon.listSubMenuId &&
+      item.product?.categoryId === coupon.listSubMenuId;
+
+    if (isBrandMatch || isListSubMatch) {
       eligibleAmount += price * item.quantity;
     }
 
@@ -181,6 +194,16 @@ export class CouponService {
   ) {
     throw new BadRequestException(
       `Minimum order value ₹${coupon.minOrderAmount} required for this coupon`
+    );
+  }
+
+  // ✅ Error if no product matched for LIST_SUBMENU coupon
+  if (
+    eligibleAmount === 0 &&
+    coupon.type === 'LIST_SUBMENU'
+  ) {
+    throw new BadRequestException(
+      `This coupon works only for ‘${listSubCategoryName}’ category products.`
     );
   }
 
@@ -209,10 +232,12 @@ export class CouponService {
       totalAfterDiscount: totalSellingPrice - couponDiscount,
       platformFee,
       shippingFee,
-      finalPayable: totalSellingPrice - couponDiscount + platformFee + shippingFee,
+      finalPayable:
+        totalSellingPrice - couponDiscount + platformFee + shippingFee,
     },
   };
 }
+
 
 
 }
