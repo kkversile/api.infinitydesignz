@@ -31,7 +31,6 @@ export class OrdersService {
       data: {
         user: { connect: { id: userId } },
         address: { connect: { id: addressId } },
-        deliveryOption: { connect: { id: deliveryOptionId } },
         paymentMethod: 'COD',
         coupon: couponId ? { connect: { id: couponId } } : undefined,
         subtotal,
