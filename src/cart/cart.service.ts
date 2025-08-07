@@ -67,7 +67,7 @@ export class CartService {
   }
 
  return {
-  message: '✅ Added to cart successfully.',
+  message: ' Added to cart successfully.',
   data: await this.getUserCart(userId),
 };
 }
@@ -157,8 +157,33 @@ async getUserCart(userId: number) {
     };
   });
 
-  // Dummy coupon logic for now
-  const couponDiscount = 1000;
+  // ✅ Fetch applied coupon (if not yet used in order)
+  const appliedCoupon = await this.prisma.appliedCoupon.findFirst({
+    where: { userId, orderId: null },
+    include: { coupon: true },
+  });
+
+  let couponDiscount = 0;
+
+  if (appliedCoupon?.coupon?.status) {
+    const coupon = appliedCoupon.coupon;
+    const now = new Date();
+    const isValidDate =
+      (!coupon.fromDate || coupon.fromDate <= now) &&
+      (!coupon.toDate || coupon.toDate >= now);
+
+    const meetsMinOrder = totalSellingPrice >= coupon.minOrderAmount;
+
+    if (isValidDate && meetsMinOrder) {
+      const eligibleAmount = totalSellingPrice;
+
+      couponDiscount =
+        coupon.priceType === 'PERCENTAGE'
+          ? (coupon.value / 100) * eligibleAmount
+          : Math.min(coupon.value, eligibleAmount);
+    }
+  }
+
   const platformFee = 20;
   const shippingFee = 80;
 
@@ -171,7 +196,8 @@ async getUserCart(userId: number) {
       totalAfterDiscount: totalSellingPrice - couponDiscount,
       platformFee,
       shippingFee,
-      finalPayable: totalSellingPrice - couponDiscount + platformFee + shippingFee,
+      finalPayable:
+        totalSellingPrice - couponDiscount + platformFee + shippingFee,
     },
   };
 }
@@ -183,7 +209,7 @@ async getUserCart(userId: number) {
     });
 
     if (!cart || cart.userId !== userId) {
-      throw new NotFoundException('❌ Cart item not found or unauthorized');
+      throw new NotFoundException('Cart item not found or unauthorized');
     }
 
     await this.prisma.cartItem.delete({
@@ -191,7 +217,7 @@ async getUserCart(userId: number) {
     });
 
   return {
-  message: '✅ Removed from cart successfully.',
+  message: 'Removed from cart successfully.',
   data: await this.getUserCart(userId),
 };
   }
@@ -216,7 +242,7 @@ await this.prisma.cartItem.update({
 });
 
 return {
-  message: '✅ Cart updated successfully.',
+  message: ' Cart updated successfully.',
   data: await this.getUserCart(userId),
 };
   }
@@ -228,7 +254,7 @@ async syncGuestCart(userId: number, dto: SyncCartDto) {
   for (const guestItem of dto.items) {
     let productId = guestItem.productId;
 
-    // ✅ Check if variant exists and get real productId
+    //  Check if variant exists and get real productId
     if (guestItem.variantId) {
       const variant = await this.prisma.variant.findUnique({
         where: { id: guestItem.variantId },
@@ -273,7 +299,7 @@ async syncGuestCart(userId: number, dto: SyncCartDto) {
   }
 
   return {
-    message: '✅ Guest cart synced successfully with merge.',
+    message: ' Guest cart synced successfully with merge.',
     data: await this.getUserCart(userId),
   };
 }

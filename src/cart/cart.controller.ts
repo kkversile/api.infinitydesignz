@@ -34,7 +34,7 @@ export class CartController {
   @Patch(":cartId")
   updateCart(
     @Req() req,
-    @Param("cartId", ParseIntPipe) cartId: number, // ✅ Force cartId to be a number
+    @Param("cartId", ParseIntPipe) cartId: number, //  Force cartId to be a number
     @Body() dto: UpdateCartDto
   ) {
     return this.cartService.updateCart(req.user.id, cartId, dto);

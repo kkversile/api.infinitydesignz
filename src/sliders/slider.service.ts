@@ -35,14 +35,14 @@ export class SliderService {
         data: created,
       };
     } catch (error) {
-      throw new BadRequestException(`❌ Failed to create slider: ${error.message}`);
+      throw new BadRequestException(` Failed to create slider: ${error.message}`);
     }
   }
 
   async update(id: number, data: UpdateSliderDto & { image_url?: string }) {
     try {
       const existing = await this.prisma.slider.findUnique({ where: { id } });
-      if (!existing) throw new NotFoundException('❌ Slider not found.');
+      if (!existing) throw new NotFoundException(' Slider not found.');
 
       const updated = await this.prisma.slider.update({
         where: { id },
@@ -65,19 +65,19 @@ export class SliderService {
         data: updated,
       };
     } catch (error) {
-      throw new BadRequestException(`❌ Failed to update slider: ${error.message}`);
+      throw new BadRequestException(` Failed to update slider: ${error.message}`);
     }
   }
 
   async remove(id: number) {
     try {
       const existing = await this.prisma.slider.findUnique({ where: { id } });
-      if (!existing) throw new NotFoundException('❌ Slider not found.');
+      if (!existing) throw new NotFoundException(' Slider not found.');
 
       await this.prisma.slider.delete({ where: { id } });
       return { message: 'Slider deleted successfully.' };
     } catch (error) {
-      throw new BadRequestException(`❌ Failed to delete slider: ${error.message}`);
+      throw new BadRequestException(` Failed to delete slider: ${error.message}`);
     }
   }
 }

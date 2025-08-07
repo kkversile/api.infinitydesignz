@@ -336,7 +336,7 @@ export class ProductsService {
       }
     }
 
-    // ✅ Validate existence of provided foreign keys
+    //  Validate existence of provided foreign keys
     const checks = [
       { id: brandId, label: "Brand", model: this.prisma.brand },
       { id: categoryId, label: "Category", model: this.prisma.category },
@@ -497,7 +497,7 @@ async getProducts(query: {
     filters,
   } = query;
 
-  const where: any = { AND: [{ status: true }] }; // ✅ Only active products
+  const where: any = { AND: [{ status: true }] }; //  Only active products
 
   // 🧭 Hierarchical category filtering
   if (listSubCatId) {
@@ -647,7 +647,7 @@ async getProducts(query: {
       },
     });
 
-    // ✅ Get product-level images
+    //  Get product-level images
     const productImages = product.images.filter(
       (img) => img.variantId === null
     );

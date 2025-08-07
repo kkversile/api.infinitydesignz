@@ -92,10 +92,10 @@ async applyCouponToCart(userId: number, code: string) {
     throw new NotFoundException('Invalid or inactive coupon');
   }
 
-  // ✅ Reset existing coupon for this user
+  //  Reset existing coupon for this user
   await this.prisma.appliedCoupon.deleteMany({ where: { userId } });
 
-  // ✅ Save new coupon
+  //  Save new coupon
   await this.prisma.appliedCoupon.create({
     data: {
       userId,
@@ -103,7 +103,7 @@ async applyCouponToCart(userId: number, code: string) {
     },
   });
 
-  // ✅ Get category name if LIST_SUBMENU
+  //  Get category name if LIST_SUBMENU
   let listSubCategoryName = '';
   if (coupon.type === 'LIST_SUBMENU' && coupon.listSubMenuId) {
     const listSubCategory = await this.prisma.category.findUnique({
@@ -197,7 +197,7 @@ async applyCouponToCart(userId: number, code: string) {
     );
   }
 
-  // ✅ Error if no product matched for LIST_SUBMENU coupon
+  //  Error if no product matched for LIST_SUBMENU coupon
   if (
     eligibleAmount === 0 &&
     coupon.type === 'LIST_SUBMENU'

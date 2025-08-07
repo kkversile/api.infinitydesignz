@@ -11,14 +11,14 @@ export class UsersService {
 
   
 
-  // ✅ Get user by mobile (used in OTP login)
+  //  Get user by mobile (used in OTP login)
   async findByMobileNumber(mobileNumber: string) {
     return this.prisma.user.findUnique({
       where: { phone: mobileNumber },
     });
   }
 
-  // ✅ Create user after successful OTP verification
+  //  Create user after successful OTP verification
   async create(mobileNumber: string, role: string) {
     return this.prisma.user.create({
       data: {
@@ -28,21 +28,21 @@ export class UsersService {
     });
   }
 
-  // ✅ Find token (for JWT AuthGuard)
+  //  Find token (for JWT AuthGuard)
   async findToken(token: string) {
     return this.prisma.user.findFirst({
       where: { token },
     });
   }
 
-  // ✅ Get user by ID (used in profile logic)
+  //  Get user by ID (used in profile logic)
   async getUserById(id: number) {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('User not found');
     return user;
   }
 
-  // ✅ Update profile (used in AuthService updateProfile)
+  //  Update profile (used in AuthService updateProfile)
   async updateUser(userId: number, dto: Partial<UpdateUserDto>) {
     return this.prisma.user.update({
       where: { id: userId },
@@ -50,7 +50,7 @@ export class UsersService {
     });
   }
 
-  // ✅ Change password (if you support it in future)
+  //  Change password (if you support it in future)
   async changePassword(userId: number, dto: ChangePasswordDto) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user || !user.password || !(await bcrypt.compare(dto.currentPassword, user.password))) {
@@ -63,7 +63,7 @@ export class UsersService {
     });
   }
 
-  // ✅ Upload profile picture
+  //  Upload profile picture
   async uploadProfilePicture(userId: number, filename: string) {
     return this.prisma.user.update({
       where: { id: userId },

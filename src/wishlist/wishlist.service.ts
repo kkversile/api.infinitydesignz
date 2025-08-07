@@ -54,11 +54,11 @@ export class WishlistService {
       }
 
       return {
-        message: '✅ Added to wishlist successfully.',
+        message: ' Added to wishlist successfully.',
         data: item,
       };
     } catch (error) {
-      throw new BadRequestException(`❌ Failed to add to wishlist: \n${error.message}`);
+      throw new BadRequestException(` Failed to add to wishlist: \n${error.message}`);
     }
   }
 
@@ -143,14 +143,14 @@ export class WishlistService {
     });
 
     if (!wishlist || wishlist.userId !== userId) {
-      throw new NotFoundException('❌ Wishlist item not found or unauthorized');
+      throw new NotFoundException(' Wishlist item not found or unauthorized');
     }
 
     await this.prisma.wishlist.delete({
       where: { id: wishlistId },
     });
 
-    return { message: '✅ Removed from wishlist successfully.' };
+    return { message: ' Removed from wishlist successfully.' };
   }
 
   async moveToCart(userId: number, productId: number) {
@@ -161,7 +161,7 @@ export class WishlistService {
       },
     });
 
-    if (!item) throw new NotFoundException('❌ Wishlist item not found.');
+    if (!item) throw new NotFoundException(' Wishlist item not found.');
 
     await this.remove(userId, item.id);
 

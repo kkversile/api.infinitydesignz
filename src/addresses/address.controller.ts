@@ -51,7 +51,7 @@ export class AddressController {
   getDefaultAddress(@Req() req) {
     return this.addressService.getDefaultAddress(req.user.id);
   }
-  // ✅ New: PATCH /user/addresses/:id/set-default
+  //  New: PATCH /user/addresses/:id/set-default
   @Patch("set-default/:id")
   async setDefaultAddress(@Req() req, @Param("id", ParseIntPipe) id: number) {
     const userId = req.user.id;

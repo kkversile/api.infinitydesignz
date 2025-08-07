@@ -9,7 +9,7 @@ export class SliderRightService {
     const slider = await this.prisma.sliderRight.findUnique({ where: { id: 1 } });
 
     if (!slider) {
-      throw new NotFoundException('❌ SliderRight not found.');
+      throw new NotFoundException(' SliderRight not found.');
     }
 
     return slider;
@@ -27,7 +27,7 @@ export class SliderRightService {
         data: updated,
       };
     } catch (error) {
-      throw new BadRequestException(`❌ Failed to update SliderRight: ${error.message}`);
+      throw new BadRequestException(` Failed to update SliderRight: ${error.message}`);
     }
   }
 }

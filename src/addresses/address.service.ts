@@ -36,7 +36,7 @@ export class AddressService {
     if (address.userId !== userId)
       throw new ForbiddenException("Access denied");
 
-    // ✅ If setting this address as default, unset previous defaults
+    //  If setting this address as default, unset previous defaults
     if (dto.default === true) {
       await this.prisma.address.updateMany({
         where: {
