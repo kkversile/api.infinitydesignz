@@ -32,10 +32,7 @@ export class OrdersService {
     const order = await this.prisma.order.create({
       data: {
         user: { connect: { id: userId } },
-        address: { connect: { id: addressId } },
-        deliveryOption: deliveryOptionId
-          ? { connect: { id: deliveryOptionId } }
-          : undefined,
+        address: { connect: { id: addressId } },     
 
         paymentMethod: "COD",
         coupon: couponId ? { connect: { id: couponId } } : undefined,
@@ -81,7 +78,6 @@ export class OrdersService {
         },
         payment: true,
         address: true,
-        deliveryOption: true,
         coupon: true,
       },
     });
@@ -95,7 +91,6 @@ export class OrdersService {
       where: { userId },
       include: {
         items: true,
-        deliveryOption: true,
       },
       orderBy: { createdAt: "desc" },
     });
