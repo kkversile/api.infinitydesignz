@@ -463,7 +463,7 @@ model Order {
   id               Int           @id @default(autoincrement())
   userId           Int
   addressId        Int
-  deliveryOptionId Int?          @default(0)
+  deliveryOptionId Int?        
   paymentMethod    PaymentMethod
   couponId         Int? // optional
   status           OrderStatus   @default(PENDING)

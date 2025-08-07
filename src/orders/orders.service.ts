@@ -2,9 +2,9 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
-} from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { CreateOrderDto } from './dto/create-order.dto';
+} from "@nestjs/common";
+import { PrismaService } from "../prisma/prisma.service";
+import { CreateOrderDto } from "./dto/create-order.dto";
 
 @Injectable()
 export class OrdersService {
@@ -24,14 +24,20 @@ export class OrdersService {
     } = dto;
 
     if (!items || !Array.isArray(items)) {
-      throw new BadRequestException('Order items are required and must be an array.');
+      throw new BadRequestException(
+        "Order items are required and must be an array."
+      );
     }
 
     const order = await this.prisma.order.create({
       data: {
         user: { connect: { id: userId } },
         address: { connect: { id: addressId } },
-        paymentMethod: 'COD',
+        deliveryOption: deliveryOptionId
+          ? { connect: { id: deliveryOptionId } }
+          : undefined,
+
+        paymentMethod: "COD",
         coupon: couponId ? { connect: { id: couponId } } : undefined,
         subtotal,
         shippingFee,
@@ -49,8 +55,8 @@ export class OrdersService {
         },
         payment: {
           create: {
-            method: 'COD',
-            status: 'PENDING',
+            method: "COD",
+            status: "PENDING",
           },
         },
       },
@@ -80,7 +86,7 @@ export class OrdersService {
       },
     });
 
-    if (!order) throw new NotFoundException('Order not found');
+    if (!order) throw new NotFoundException("Order not found");
     return order;
   }
 
@@ -91,7 +97,7 @@ export class OrdersService {
         items: true,
         deliveryOption: true,
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
     });
   }
 
