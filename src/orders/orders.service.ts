@@ -10,61 +10,94 @@ import { CreateOrderDto } from "./dto/create-order.dto";
 export class OrdersService {
   constructor(private prisma: PrismaService) {}
 
-  async placeOrder(dto: CreateOrderDto, userId: number) {
-    const {
-      addressId,
- 
-      couponId,
-      items,
+async placeOrder(dto: CreateOrderDto, userId: number) {
+  const {
+    addressId,
+   
+    couponId,
+    items,
+    subtotal,
+    shippingFee,
+    gst,
+    totalAmount,
+    note,
+  } = dto;
+
+  // ✅ Validate user exists
+  const user = await this.prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new NotFoundException('User not found');
+
+  // ✅ Validate address exists and belongs to user
+  const address = await this.prisma.address.findFirst({
+    where: { id: addressId, userId },
+  });
+  if (!address) {
+    throw new BadRequestException('Address not found or unauthorized');
+  }
+
+  // ✅ Validate coupon (if provided)
+  if (couponId) {
+    const coupon = await this.prisma.coupon.findUnique({
+      where: { id: couponId },
+    });
+    if (!coupon) {
+      throw new BadRequestException(`Invalid coupon ID: ${couponId}`);
+    }
+  }
+
+  // ✅ Validate each product and variant in items
+  for (const item of items) {
+    const product = await this.prisma.product.findUnique({
+      where: { id: item.productId },
+    });
+    if (!product) {
+      throw new BadRequestException(`Product ID ${item.productId} not found`);
+    }
+
+    const variant = await this.prisma.variant.findUnique({
+      where: { id: item.variantId },
+    });
+    if (!variant) {
+      throw new BadRequestException(`Variant ID ${item.variantId} not found`);
+    }
+  }
+
+  // ✅ Create the order
+  const order = await this.prisma.order.create({
+    data: {
+      user: { connect: { id: userId } },
+      address: { connect: { id: addressId } },
+ paymentMethod:'COD',
+       coupon: couponId ? { connect: { id: couponId } } : undefined,
       subtotal,
       shippingFee,
       gst,
       totalAmount,
       note,
-    } = dto;
-
-    if (!items || !Array.isArray(items)) {
-      throw new BadRequestException(
-        "Order items are required and must be an array."
-      );
-    }
-
-    const order = await this.prisma.order.create({
-      data: {
-        user: { connect: { id: userId } },
-        address: { connect: { id: addressId } },     
-
-        paymentMethod: "COD",
-        coupon: couponId ? { connect: { id: couponId } } : undefined,
-        subtotal,
-        shippingFee,
-        gst,
-        totalAmount,
-        note,
-        items: {
-          create: items.map((item) => ({
-            productId: item.productId,
-            variantId: item.variantId,
-            quantity: item.quantity,
-            price: item.price,
-            total: item.total,
-          })),
-        },
-        payment: {
-          create: {
-            method: "COD",
-            status: "PENDING",
-          },
+      items: {
+        create: items.map((item) => ({
+          productId: item.productId,
+          variantId: item.variantId,
+          quantity: item.quantity,
+          price: item.price,
+          total: item.total,
+        })),
+      },
+      payment: {
+        create: {
+          method: 'COD',
+          status: 'PENDING',
         },
       },
-      include: {
-        items: true,
-        payment: true,
-      },
-    });
+    },
+    include: {
+      items: true,
+      payment: true,
+    },
+  });
 
-    return order;
-  }
+  return order;
+}
 
   async getOrderDetails(orderId: number) {
     const order = await this.prisma.order.findUnique({
