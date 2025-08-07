@@ -18,58 +18,59 @@ export class CartService {
   constructor(private prisma: PrismaService) {}
 
   async addToCart(userId: number, dto: AddToCartDto) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new NotFoundException('User not found');
+  const user = await this.prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new NotFoundException('User not found');
 
-    const product = await this.prisma.product.findUnique({
-      where: { id: dto.productId },
+  const product = await this.prisma.product.findUnique({
+    where: { id: dto.productId },
+  });
+  if (!product) throw new NotFoundException('Product not found');
+
+  // Optional variant check
+  let variantId: number | null = null;
+  if (dto.variantId && dto.variantId > 0) {
+    const variant = await this.prisma.variant.findUnique({
+      where: { id: dto.variantId },
     });
-    if (!product) throw new NotFoundException('Product not found');
+    if (!variant) throw new NotFoundException(`Variant ID ${dto.variantId} not found.`);
+    variantId = dto.variantId;
+  }
 
-    let variantId: number | null = null;
+  // 🔍 Look for existing match (with or without variant)
+  const existing = await this.prisma.cartItem.findFirst({
+    where: {
+      userId,
+      productId: dto.productId,
+      variantId: variantId ?? null,
+    },
+  });
 
-    if (dto.variantId && dto.variantId > 0) {
-      const variant = await this.prisma.variant.findUnique({
-        where: { id: dto.variantId },
-      });
-      if (!variant) throw new NotFoundException(`Variant ID ${dto.variantId} not found.`);
-      variantId = dto.variantId;
-    }
-
-    const existing = await this.prisma.cartItem.findFirst({
-      where: {
-        userId,
-        productId: dto.productId,
-        variantId,
+  let item;
+  if (existing) {
+    // 🔁 Update quantity if match found
+    item = await this.prisma.cartItem.update({
+      where: { id: existing.id },
+      data: {
+        quantity: existing.quantity + dto.quantity,
       },
     });
-
-    let item;
-    if (existing) {
-      item = await this.prisma.cartItem.update({
-        where: { id: existing.id },
-        data: {
-          quantity: existing.quantity + dto.quantity,
-        },
-      });
-    } else {
-
-      
-      item = await this.prisma.cartItem.create({
-        data: {
-          userId,
-          productId: dto.productId,
-          variantId,
-          quantity: dto.quantity,
-        },
-      });
-    }
-
-    return {
-      message: '✅ Added to cart successfully.',
-      data: item,
-    };
+  } else {
+    // ➕ Create new cart item
+    item = await this.prisma.cartItem.create({
+      data: {
+        userId,
+        productId: dto.productId,
+        variantId: variantId,
+        quantity: dto.quantity,
+      },
+    });
   }
+
+ return {
+  message: '✅ Added to cart successfully.',
+  data: await this.getUserCart(userId),
+};
+}
 
 async getUserCart(userId: number) {
   const allCartItems = await this.prisma.cartItem.findMany({
@@ -189,14 +190,17 @@ async getUserCart(userId: number) {
       where: { id: cartId },
     });
 
-    return { message: '✅ Removed from cart successfully.' };
+  return {
+  message: '✅ Removed from cart successfully.',
+  data: await this.getUserCart(userId),
+};
   }
 
-  async updateCart(userId: number, dto: UpdateCartDto) {
+  async updateCart(userId: number, cartId:number,dto: UpdateCartDto) {
     const cart = await this.prisma.cartItem.findFirst({
       where: {
         userId,
-       id: dto.cartId,
+       id: cartId,
       },
     });
 
@@ -204,44 +208,75 @@ async getUserCart(userId: number) {
       throw new NotFoundException('Cart item not found');
     }
 
-    return this.prisma.cartItem.update({
-      where: { id: cart.id },
-      data: {
-        quantity: dto.quantity,
-      },
-    });
+await this.prisma.cartItem.update({
+  where: { id: cart.id },
+  data: {
+    quantity: dto.quantity,
+  },
+});
+
+return {
+  message: '✅ Cart updated successfully.',
+  data: await this.getUserCart(userId),
+};
   }
 
-  async syncGuestCart(userId: number, dto: SyncCartDto) {
-  await this.prisma.cartItem.deleteMany({ where: { userId } });
+async syncGuestCart(userId: number, dto: SyncCartDto) {
+  const user = await this.prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new NotFoundException('User not found');
 
-  const data = await Promise.all(
-    dto.items.map(async (item) => {
-      let productId = item.productId;
+  for (const guestItem of dto.items) {
+    let productId = guestItem.productId;
 
-      if (item.variantId) {
-        const variant = await this.prisma.variant.findUnique({
-          where: { id: item.variantId },
-          select: { productId: true },
-        });
+    // ✅ Check if variant exists and get real productId
+    if (guestItem.variantId) {
+      const variant = await this.prisma.variant.findUnique({
+        where: { id: guestItem.variantId },
+        select: { productId: true },
+      });
 
-        if (!variant) {
-          throw new NotFoundException(`Invalid variant ID: ${item.variantId} in sync data`);
-        }
-
-        productId = variant.productId;
+      if (!variant) {
+        throw new NotFoundException(`Invalid variant ID: ${guestItem.variantId}`);
       }
 
-      return {
+      productId = variant.productId;
+    }
+
+    // 🔍 Check for existing item in user's cart (product + variant match)
+    const existingItem = await this.prisma.cartItem.findFirst({
+      where: {
         userId,
         productId,
-        variantId: item.variantId ?? null,
-        quantity: item.quantity,
-      };
-    }),
-  );
+        variantId: guestItem.variantId ?? null,
+      },
+    });
 
-  return this.prisma.cartItem.createMany({ data });
+    if (existingItem) {
+      // 🔁 Update quantity
+      await this.prisma.cartItem.update({
+        where: { id: existingItem.id },
+        data: {
+          quantity: existingItem.quantity + guestItem.quantity,
+        },
+      });
+    } else {
+      // ➕ Add new cart item
+      await this.prisma.cartItem.create({
+        data: {
+          userId,
+          productId,
+          variantId: guestItem.variantId ?? null,
+          quantity: guestItem.quantity,
+        },
+      });
+    }
+  }
+
+  return {
+    message: '✅ Guest cart synced successfully with merge.',
+    data: await this.getUserCart(userId),
+  };
 }
+
 
 }

@@ -13,7 +13,6 @@ export class OrdersService {
 async placeOrder(dto: CreateOrderDto, userId: number) {
   const {
     addressId,
-   
     couponId,
     items,
     subtotal,
@@ -45,7 +44,7 @@ async placeOrder(dto: CreateOrderDto, userId: number) {
     }
   }
 
-  // ✅ Validate each product and variant in items
+  // ✅ Validate each product and (optional) variant
   for (const item of items) {
     const product = await this.prisma.product.findUnique({
       where: { id: item.productId },
@@ -54,11 +53,13 @@ async placeOrder(dto: CreateOrderDto, userId: number) {
       throw new BadRequestException(`Product ID ${item.productId} not found`);
     }
 
-    const variant = await this.prisma.variant.findUnique({
-      where: { id: item.variantId },
-    });
-    if (!variant) {
-      throw new BadRequestException(`Variant ID ${item.variantId} not found`);
+    if (item.variantId !== undefined && item.variantId !== null) {
+      const variant = await this.prisma.variant.findUnique({
+        where: { id: item.variantId },
+      });
+      if (!variant) {
+        throw new BadRequestException(`Variant ID ${item.variantId} not found`);
+      }
     }
   }
 
@@ -67,8 +68,8 @@ async placeOrder(dto: CreateOrderDto, userId: number) {
     data: {
       user: { connect: { id: userId } },
       address: { connect: { id: addressId } },
- paymentMethod:'COD',
-       coupon: couponId ? { connect: { id: couponId } } : undefined,
+      paymentMethod: 'COD',
+      coupon: couponId ? { connect: { id: couponId } } : undefined,
       subtotal,
       shippingFee,
       gst,
@@ -77,7 +78,7 @@ async placeOrder(dto: CreateOrderDto, userId: number) {
       items: {
         create: items.map((item) => ({
           productId: item.productId,
-          variantId: item.variantId,
+          variantId: item.variantId ?? null,
           quantity: item.quantity,
           price: item.price,
           total: item.total,
@@ -98,6 +99,7 @@ async placeOrder(dto: CreateOrderDto, userId: number) {
 
   return order;
 }
+
 
   async getOrderDetails(orderId: number) {
     const order = await this.prisma.order.findUnique({
