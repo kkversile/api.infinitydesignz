@@ -13,7 +13,7 @@ export class OrdersService {
   async placeOrder(dto: CreateOrderDto, userId: number) {
     const {
       addressId,
-      deliveryOptionId,
+ 
       couponId,
       items,
       subtotal,

@@ -1,6 +1,5 @@
 export class CreateOrderDto {
   addressId: number;
-  deliveryOptionId: number; // ✅ Replaces deliveryType enum
   couponId?: number;
   subtotal: number;
   shippingFee: number;
