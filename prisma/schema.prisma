@@ -460,27 +460,26 @@ model Address {
 }
 
 model Order {
-  id               Int           @id @default(autoincrement())
-  userId           Int
-  addressId        Int
-  deliveryOptionId Int?        
-  paymentMethod    PaymentMethod
-  couponId         Int? // optional
-  status           OrderStatus   @default(PENDING)
-  subtotal         Float
-  shippingFee      Float
-  gst              Float
-  totalAmount      Float
-  note             String?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  id            Int           @id @default(autoincrement())
+  userId        Int
+  addressId     Int
+  paymentMethod PaymentMethod
+  couponId      Int? // optional
+  status        OrderStatus   @default(PENDING)
+  subtotal      Float
+  shippingFee   Float
+  gst           Float
+  totalAmount   Float
+  note          String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
-  user           User            @relation(fields: [userId], references: [id])
-  address        Address         @relation(fields: [addressId], references: [id])
-  coupon         Coupon?         @relation(fields: [couponId], references: [id])
-  deliveryOption DeliveryOption? @relation(fields: [deliveryOptionId], references: [id]) // ✅
-  items          OrderItem[]
-  payment        Payment?
+  user             User            @relation(fields: [userId], references: [id])
+  address          Address         @relation(fields: [addressId], references: [id])
+  coupon           Coupon?         @relation(fields: [couponId], references: [id])
+  items            OrderItem[]
+  payment          Payment?
+ 
 
   @@map("orders")
 }
@@ -491,7 +490,6 @@ model DeliveryOption {
   description String?
   fee         Float
   days        String
-  orders      Order[]
 }
 
 model OrderItem {
