@@ -4,12 +4,30 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import * as bcrypt from 'bcryptjs';
+import { Prisma } from '@prisma/client';
+import { UpdateProfileDto } from './dto/update-profile.dto'; // ✅ New DTO for modal
+
+function parseDob(input?: string): Date | undefined {
+  if (!input) return undefined;
+
+  // Try ISO first
+  const direct = new Date(input);
+  if (!isNaN(direct.getTime())) return direct;
+
+  // Try dd/MM/yyyy
+  const m = input.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (m) {
+    const [, dd, mm, yyyy] = m;
+    const d = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  throw new BadRequestException('Invalid dateOfBirth format. Use YYYY-MM-DD or dd/MM/yyyy.');
+}
 
 @Injectable()
 export class UsersService {
   constructor(private prisma: PrismaService) {}
-
-  
 
   //  Get user by mobile (used in OTP login)
   async findByMobileNumber(mobileNumber: string) {
@@ -23,7 +41,7 @@ export class UsersService {
     return this.prisma.user.create({
       data: {
         phone: mobileNumber,
-        role:"CUSTOMER",
+        role: 'CUSTOMER',
       },
     });
   }
@@ -42,7 +60,43 @@ export class UsersService {
     return user;
   }
 
-  //  Update profile (used in AuthService updateProfile)
+  //  Update profile from modal (all fields)
+  async updateProfile(userId: number, dto: UpdateProfileDto) {
+    const data: Prisma.UserUpdateInput = {};
+
+    if (dto.name !== undefined) data.name = dto.name;
+    if (dto.email !== undefined) data.email = dto.email;
+    if (dto.mobile !== undefined) data.phone = dto.mobile;
+    if (dto.alternateMobile !== undefined) (data as any).alternateMobile = dto.alternateMobile;
+    if (dto.gender !== undefined) (data as any).gender = dto.gender as any;
+    if (dto.dateOfBirth !== undefined) (data as any).dateOfBirth = parseDob(dto.dateOfBirth)!;
+
+    try {
+      return await this.prisma.user.update({
+        where: { id: userId },
+        data,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          alternateMobile: true,
+          gender: true,
+          dateOfBirth: true,
+          profilePicture: true,
+          updatedAt: true,
+        },
+      });
+    } catch (e: any) {
+      if (e.code === 'P2002') {
+        const fields = (e.meta?.target as string[])?.join(', ') ?? 'unique field';
+        throw new BadRequestException(`Another account already uses this ${fields}.`);
+      }
+      throw e;
+    }
+  }
+
+  //  Update user (generic, for internal usage)
   async updateUser(userId: number, dto: Partial<UpdateUserDto>) {
     return this.prisma.user.update({
       where: { id: userId },
@@ -50,7 +104,7 @@ export class UsersService {
     });
   }
 
-  //  Change password (if you support it in future)
+  //  Change password
   async changePassword(userId: number, dto: ChangePasswordDto) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user || !user.password || !(await bcrypt.compare(dto.currentPassword, user.password))) {

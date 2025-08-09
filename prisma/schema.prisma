@@ -405,6 +405,12 @@ model ProductFilter {
   @@map("product_filters")
 }
 
+enum Gender {
+  Male
+  Female
+  Other
+}
+
 model User {
   id             Int      @id @default(autoincrement())
   name           String? // optional
@@ -414,6 +420,10 @@ model User {
   role           UserRole @default(CUSTOMER)
   token          String?
   profilePicture String?
+
+  alternateMobile String?
+  gender          Gender?
+  dateOfBirth     DateTime?
 
   status    Boolean  @default(true)
   createdAt DateTime @default(now())
