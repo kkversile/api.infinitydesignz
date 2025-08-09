@@ -5,7 +5,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import * as bcrypt from 'bcryptjs';
 import { Prisma } from '@prisma/client';
-import { UpdateProfileDto } from './dto/update-profile.dto'; // ✅ New DTO for modal
+import { UpdateProfileDto } from './dto/update-profile.dto'; // ✅ DTO for modal
 
 function parseDob(input?: string): Date | undefined {
   if (!input) return undefined;
@@ -23,6 +23,21 @@ function parseDob(input?: string): Date | undefined {
   }
 
   throw new BadRequestException('Invalid dateOfBirth format. Use YYYY-MM-DD or dd/MM/yyyy.');
+}
+
+// ---- helpers to format Prisma P2002 messages safely ----
+function uniqueTargetToLabel(err: any): string {
+  const t = err?.meta?.target; // can be string | string[] | undefined
+  if (Array.isArray(t)) return t.join(', ');
+  if (typeof t === 'string') return t;
+  return 'unique field';
+}
+function humanizeConstraint(label: string): string {
+  const lower = label.toLowerCase();
+  if (lower.includes('email')) return 'email';
+  if (lower.includes('phone') || lower.includes('mobile')) return 'mobile number';
+  if (lower.includes('username')) return 'username';
+  return label;
 }
 
 @Injectable()
@@ -88,9 +103,10 @@ export class UsersService {
         },
       });
     } catch (e: any) {
-      if (e.code === 'P2002') {
-        const fields = (e.meta?.target as string[])?.join(', ') ?? 'unique field';
-        throw new BadRequestException(`Another account already uses this ${fields}.`);
+      if (e?.code === 'P2002') {
+        const raw = uniqueTargetToLabel(e);        // handles string | string[] | undefined
+        const label = humanizeConstraint(raw);     // nicer field name
+        throw new BadRequestException(`Another account already uses this ${label}.`);
       }
       throw e;
     }
