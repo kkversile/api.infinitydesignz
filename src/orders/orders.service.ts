@@ -5,6 +5,7 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateOrderDto } from "./dto/create-order.dto";
+import { BuyNowDto } from "./dto/buy-now.dto";
 
 @Injectable()
 export class OrdersService {
@@ -138,7 +139,7 @@ async placeOrder(dto: CreateOrderDto, userId: number) {
   };
 }
 
-  async getOrderDetails(orderId: number) {
+async getOrderDetails(orderId: number) {
   const order = await this.prisma.order.findUnique({
     where: { id: orderId },
     include: {
@@ -167,7 +168,7 @@ async placeOrder(dto: CreateOrderDto, userId: number) {
     },
   });
 
-  if (!order) throw new NotFoundException("Order not found");
+  if (!order) throw new NotFoundException('Order not found');
 
   let totalMRP = 0;
   let totalSellingPrice = 0;
@@ -175,12 +176,12 @@ async placeOrder(dto: CreateOrderDto, userId: number) {
   const items = order.items.map((item) => {
     const useVariant = item.variant !== null;
 
-    const price = item.price;
+    const price = Number(item.price) || 0; // per-unit price saved on item
     const mrp = useVariant
-      ? item.variant?.mrp ?? item.product?.mrp
-      : item.product?.mrp;
+      ? Number(item.variant?.mrp ?? item.product?.mrp ?? 0)
+      : Number(item.product?.mrp ?? 0);
 
-    totalMRP += (mrp || 0) * item.quantity;
+    totalMRP += mrp * item.quantity;
     totalSellingPrice += price * item.quantity;
 
     const mainImage = useVariant
@@ -196,12 +197,8 @@ async placeOrder(dto: CreateOrderDto, userId: number) {
       brand: item.product?.brand?.name,
       price,
       mrp,
-      color: useVariant
-        ? item.variant?.color?.label
-        : item.product?.color?.label,
-      size: useVariant
-        ? item.variant?.size?.title
-        : item.product?.size?.title,
+      color: useVariant ? item.variant?.color?.label : item.product?.color?.label,
+      size: useVariant ? item.variant?.size?.title : item.product?.size?.title,
       imageUrl: mainImage,
       imageAlt,
     };
@@ -212,31 +209,31 @@ async placeOrder(dto: CreateOrderDto, userId: number) {
       variantId: item.variantId,
       quantity: item.quantity,
       total: item.total,
-      [useVariant ? "variant" : "product"]: productData,
+      [useVariant ? 'variant' : 'product']: productData,
     };
   });
 
-  // 💸 Coupon discount logic
-  const coupon = order.coupon;
-  let couponDiscount = 0;
-  if (coupon) {
-    couponDiscount =
-      coupon.priceType === 'PERCENTAGE'
-        ? (coupon.value / 100) * totalSellingPrice
-        : Math.min(coupon.value, totalSellingPrice);
-  }
-
+  // 🔖 Fees (keep in sync with order creation logic)
   const platformFee = 20;
-  const shippingFee = order.shippingFee;
+  const shippingFee = Number(order.shippingFee) || 0;
+
+  // ✅ Derive coupon discount from stored totals (no re-validation)
+  // finalPayable = totalSellingPrice - couponDiscount + platformFee + shippingFee
+  // ⇒ couponDiscount = totalSellingPrice + platformFee + shippingFee - order.totalAmount
+  const storedFinal = Number(order.totalAmount) || 0;
+  let couponDiscount = totalSellingPrice + platformFee + shippingFee - storedFinal;
+  // Safety clamp
+  if (!order.coupon) couponDiscount = 0; // no coupon linked → no discount shown
+  couponDiscount = Math.max(0, Math.min(totalSellingPrice, Math.round(couponDiscount * 100) / 100));
 
   return {
     id: order.id,
     createdAt: order.createdAt,
     address: order.address,
     payment: order.payment,
-    coupon: coupon
+    coupon: order.coupon
       ? {
-          code: coupon.code,
+          code: order.coupon.code,
           discount: couponDiscount,
         }
       : null,
@@ -248,10 +245,148 @@ async placeOrder(dto: CreateOrderDto, userId: number) {
       totalAfterDiscount: totalSellingPrice - couponDiscount,
       platformFee,
       shippingFee,
-      finalPayable:
-        totalSellingPrice - couponDiscount + platformFee + shippingFee,
+      finalPayable: totalSellingPrice - couponDiscount + platformFee + shippingFee,
     },
   };
 }
+
+/** Place a single-item order directly from PDP ("Buy Now") using client-provided discount */
+async buyNow(dto: BuyNowDto, userId: number) {
+  const {
+    productId,
+    variantId,
+    quantity = 1,
+    addressId,
+    note,
+    couponId,               // optional: link order -> coupon
+    couponDiscount = 0,     // final discount already computed on UI
+  } = dto;
+
+  if (!productId || !addressId) {
+    throw new BadRequestException('productId and addressId are required');
+  }
+  if (quantity <= 0) {
+    throw new BadRequestException('Quantity must be at least 1');
+  }
+
+  // Validate user & address
+  const user = await this.prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new NotFoundException('User not found');
+
+  const address = await this.prisma.address.findUnique({ where: { id: addressId } });
+  if (!address || address.userId !== userId) {
+    throw new BadRequestException('Invalid address');
+  }
+
+  // Load product & optional variant
+  const product = await this.prisma.product.findUnique({
+    where: { id: productId },
+    include: { brand: true, size: true, color: true },
+  });
+  if (!product) throw new NotFoundException('Product not found');
+
+  const variant = variantId
+    ? await this.prisma.variant.findUnique({ where: { id: variantId } })
+    : null;
+
+  if (variantId && !variant) {
+    throw new BadRequestException(`Variant ID ${variantId} not found`);
+  }
+  if (variant && variant.productId !== product.id) {
+    throw new BadRequestException('Variant does not belong to the product');
+  }
+
+  // Stock check
+  if (variant) {
+    if (variant.stock !== null && variant.stock < quantity) {
+      throw new BadRequestException('Requested quantity not available');
+    }
+  } else {
+    if (product.stock !== null && product.stock < quantity) {
+      throw new BadRequestException('Requested quantity not available');
+    }
+  }
+
+  // Pricing
+  const unitPrice = (variant?.sellingPrice ?? product.sellingPrice);
+  const subtotal  = unitPrice * quantity;
+
+  // Trust UI discount, but cap to [0, subtotal]
+  const safeDiscount = Math.max(0, Math.min(subtotal, Number(couponDiscount) || 0));
+
+  // Fees (match cart logic)
+  const platformFee = 20;
+  const shippingFee = 80;
+
+  const totalAfterDiscount = Math.max(0, subtotal - safeDiscount);
+  const gst = Math.round(totalAfterDiscount * 0.18 * 100) / 100;
+  const totalAmount = totalAfterDiscount + platformFee + shippingFee;
+
+  // If a couponId was supplied, verify existence (no revalidation of rules/amount)
+// If a couponId was supplied, verify existence (no revalidation of rules/amount)
+let couponConnect: { connect: { id: number } } | undefined;
+
+if (couponId != null) { // covers undefined & null
+  const id = Number(couponId);
+  if (!Number.isFinite(id)) {
+    throw new BadRequestException('couponId must be a number');
+  }
+
+  const coupon = await this.prisma.coupon.findFirst({
+    where: { id, status: true },
+    select: { id: true },
+  });
+
+  if (!coupon) {
+    throw new BadRequestException(`Invalid or inactive coupon ID: ${couponId}`);
+  }
+
+  couponConnect = { connect: { id } };
+}
+
+  // Create order
+  const order = await this.prisma.order.create({
+    data: {
+      user: { connect: { id: userId } },
+      address: { connect: { id: addressId } },
+      paymentMethod: 'COD',
+      coupon: couponConnect,                 // only connects if verified above
+      subtotal,
+      shippingFee,
+      gst,
+      totalAmount,
+      note,
+      items: {
+        create: [{
+          productId,
+          variantId: variantId ?? null,
+          quantity,
+          price: unitPrice,                  // per-unit
+          total: subtotal,                   // before fees/discount
+        }],
+      },
+      payment: {
+        create: { method: 'COD', status: 'PENDING' },
+      },
+    },
+    include: { items: true, payment: true },
+  });
+
+  // Decrement stock
+  if (variant) {
+    await this.prisma.variant.update({
+      where: { id: variant.id },
+      data: { stock: variant.stock !== null ? Math.max(0, variant.stock - quantity) : null },
+    });
+  } else {
+    await this.prisma.product.update({
+      where: { id: product.id },
+      data: { stock: product.stock !== null ? Math.max(0, product.stock - quantity) : null },
+    });
+  }
+
+  return this.getOrderDetails(order.id);
+}
+
 
 }
