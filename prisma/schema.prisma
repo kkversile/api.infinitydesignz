@@ -89,8 +89,12 @@ model Variant {
   Wishlist  Wishlist[]
   CartItem  CartItem[]
 
+  // NEW: back-relation to Buy Now items
+  buyNowItems BuyNowItem[]
+
   @@map("product_variants")
 }
+
 
 // ─── PRODUCT DETAILS & IMAGES ─────────────────────────────────────────────────
 
@@ -305,6 +309,9 @@ model Product {
   Wishlist  Wishlist[]
   CartItem  CartItem[]
 
+  // NEW: back-relation to Buy Now items
+  buyNowItems BuyNowItem[]
+
   @@map("products")
 }
 
@@ -413,9 +420,9 @@ enum Gender {
 
 model User {
   id             Int      @id @default(autoincrement())
-  name           String? // optional
+  name           String?
   email          String?
-  password       String? // optional
+  password       String?
   phone          String   @unique
   role           UserRole @default(CUSTOMER)
   token          String?
@@ -434,6 +441,9 @@ model User {
   appliedCoupons AppliedCoupon[]
   Wishlist       Wishlist[]
   CartItem       CartItem[]
+
+  // NEW: one-to-one Buy Now item
+  buyNowItem     BuyNowItem?
 
   @@map("users")
 }
@@ -628,4 +638,34 @@ model CartItem {
 
   @@unique([userId, productId, variantId]) //  Optional variant-safe unique constraint
   @@map("cart_items")
+}
+
+model ServiceableArea {
+  id              Int     @id @default(autoincrement())
+  pincode         String  @unique @db.VarChar(6)
+  city            String
+  state           String
+  isActive        Boolean @default(true)
+  codAvailable    Boolean @default(false)
+  deliveryEtaDays Int?
+  lastMileFee     Int?    // in your currency (e.g., INR)
+
+  @@index([pincode])
+}
+
+model BuyNowItem {
+  id         Int      @id @default(autoincrement())
+  userId     Int      @unique
+  productId  Int
+  variantId  Int?
+  quantity   Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user    User     @relation(fields: [userId], references: [id])
+  product Product  @relation(fields: [productId], references: [id])
+  variant Variant? @relation(fields: [variantId], references: [id])
+
+
+  @@map("buy_now_items")
 }

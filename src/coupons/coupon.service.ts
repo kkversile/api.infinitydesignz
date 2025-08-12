@@ -16,7 +16,6 @@ type NormalizedItem = {
   productId: number;
   variantId?: number | null;
   quantity: number;
-  // Minimal fields used by pricing logic
   product: {
     id: number;
     title: string;
@@ -68,6 +67,11 @@ export class CouponService {
     return coupon;
   }
 
+  async findByCode(code: string) {
+  const coupon = await this.prisma.coupon.findUnique({ where: { code } });
+  if (!coupon) throw new NotFoundException('Coupon not found');
+  return coupon;
+}
   /** Update coupon with error handling */
   async update(id: number, data: UpdateCouponDto) {
     try {
@@ -92,35 +96,63 @@ export class CouponService {
     return { message: 'Coupon deleted successfully' };
   }
 
-  /** Get a coupon by its code */
-  async findByCode(code: string) {
-    const coupon = await this.prisma.coupon.findUnique({ where: { code } });
-    if (!coupon) throw new NotFoundException('Coupon not found');
-    return coupon;
-  }
-
-  // ───────────────────────────
-  // Public: APPLY TO CART
-  // ───────────────────────────
-  async applyCouponToCart(userId: number, code: string) {
+  /** Get a coupon by its code (active only) */
+  private async getActiveCouponByCode(code: string) {
     const coupon = await this.prisma.coupon.findFirst({
       where: { code, status: true },
     });
     if (!coupon) throw new NotFoundException('Invalid or inactive coupon');
+    return coupon;
+  }
 
-    // Reset existing coupon for this user
+  // ───────────────────────────
+  // Public: APPLY TO CART (uses current cart state)
+  // ───────────────────────────
+  async applyCouponToCart(userId: number, code: string) {
+    const coupon = await this.getActiveCouponByCode(code);
+
+    // persist selection for user (same behavior as before)
     await this.prisma.appliedCoupon.deleteMany({ where: { userId } });
     await this.prisma.appliedCoupon.create({
       data: { userId, couponId: coupon.id },
     });
 
-    const listSubCategoryName = await this.getListSubCategoryName(coupon);
+    const items = await this.loadCartItemsNormalized(userId);
+    if (!items.length) {
+      throw new BadRequestException('Cart is empty or items are invalid');
+    }
 
-    // Load cart items and normalize
-    const rawCart = await this.prisma.cartItem.findMany({ where: { userId } });
+    const listSubCategoryName = await this.getListSubCategoryName(coupon);
+    return this.computeCouponPricing(coupon, items, listSubCategoryName);
+  }
+
+  // ───────────────────────────
+  // Public: APPLY TO SINGLE ITEM (BUY NOW current state)
+  // ───────────────────────────
+  async applyCouponForItem(userId: number, code: string) {
+    const coupon = await this.getActiveCouponByCode(code);
+
+    // persist selection for user (mirrors cart behavior)
+    await this.prisma.appliedCoupon.deleteMany({ where: { userId } });
+    await this.prisma.appliedCoupon.create({
+      data: { userId, couponId: coupon.id },
+    });
+
+    const items = await this.loadBuyNowNormalized(userId);
+    const listSubCategoryName = await this.getListSubCategoryName(coupon);
+    return this.computeCouponPricing(coupon, items, listSubCategoryName);
+  }
+
+  // ───────────────────────────
+  // PRIVATE HELPERS
+  // ───────────────────────────
+
+  /** Normalize full cart to pricing items */
+  private async loadCartItemsNormalized(userId: number): Promise<NormalizedItem[]> {
+    const raw = await this.prisma.cartItem.findMany({ where: { userId } });
     const items: NormalizedItem[] = [];
 
-    for (const item of rawCart) {
+    for (const item of raw) {
       const product = await this.prisma.product.findUnique({
         where: { id: item.productId },
         include: {
@@ -135,10 +167,7 @@ export class CouponService {
         ? await this.prisma.variant.findUnique({
             where: { id: item.variantId },
             include: {
-              images: {
-                where: { isMain: true },
-                select: { url: true, alt: true },
-              },
+              images: { where: { isMain: true }, select: { url: true, alt: true } },
               size: true,
               color: true,
             },
@@ -172,36 +201,16 @@ export class CouponService {
       });
     }
 
-    if (!items.length) {
-      throw new BadRequestException('Cart is empty or items are invalid');
-    }
-
-    return this.computeCouponPricing(coupon, items, listSubCategoryName);
+    return items;
   }
 
-  // ───────────────────────────
-  // Public: APPLY TO SINGLE ITEM (BUY NOW)
-  // ───────────────────────────
-  async applyCouponForItem(
-    userId: number,
-    payload: { code: string; productId: number; variantId?: number; quantity: number }
-  ) {
-    const { code, productId, variantId, quantity } = payload;
-    if (!code || !productId || !quantity || quantity <= 0) {
-      throw new BadRequestException(
-        'code, productId and positive quantity are required'
-      );
-    }
-
-    const coupon = await this.prisma.coupon.findFirst({
-      where: { code, status: true },
-    });
-    if (!coupon) throw new NotFoundException('Invalid or inactive coupon');
-
-    const listSubCategoryName = await this.getListSubCategoryName(coupon);
+  /** Normalize current Buy Now item to pricing items */
+  private async loadBuyNowNormalized(userId: number): Promise<NormalizedItem[]> {
+    const buyNow = await this.prisma.buyNowItem.findUnique({ where: { userId } });
+    if (!buyNow) throw new BadRequestException('No Buy Now item found');
 
     const product = await this.prisma.product.findUnique({
-      where: { id: productId },
+      where: { id: buyNow.productId },
       include: {
         brand: true,
         category: true,
@@ -210,9 +219,9 @@ export class CouponService {
     });
     if (!product) throw new NotFoundException('Product not found');
 
-    const variant = variantId
+    const variant = buyNow.variantId
       ? await this.prisma.variant.findUnique({
-          where: { id: variantId },
+          where: { id: buyNow.variantId },
           include: {
             images: { where: { isMain: true }, select: { url: true, alt: true } },
             size: true,
@@ -221,11 +230,11 @@ export class CouponService {
         })
       : null;
 
-    const items: NormalizedItem[] = [
+    return [
       {
-        productId,
-        variantId: variantId ?? null,
-        quantity,
+        productId: buyNow.productId,
+        variantId: buyNow.variantId ?? null,
+        quantity: buyNow.quantity,
         product: {
           id: product.id,
           title: product.title,
@@ -247,13 +256,7 @@ export class CouponService {
           : null,
       },
     ];
-
-    return this.computeCouponPricing(coupon, items, listSubCategoryName);
   }
-
-  // ───────────────────────────
-  // PRIVATE HELPERS
-  // ───────────────────────────
 
   /** Resolve category name for LIST_SUBMENU message, otherwise '' */
   private async getListSubCategoryName(coupon: any): Promise<string> {
@@ -350,7 +353,7 @@ export class CouponService {
     return {
       items: responseItems,
       coupon: {
-        id: coupon.id,      // available for Buy Now linkage
+        id: coupon.id,
         code: coupon.code,
         discount: couponDiscount,
       },

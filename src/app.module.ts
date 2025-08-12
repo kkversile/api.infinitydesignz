@@ -34,6 +34,8 @@ import { CartModule } from './cart/cart.module';
 import { OrdersModule } from './orders/orders.module';
 import { DeliveryOptionsModule } from './delivery-options/delivery-options.module';
 
+import { PincodeModule } from './pincode/pincode.module';
+import { BuyNowModule } from './buy-now/buy-now.module';
 
 @Module({
   imports: [      
@@ -62,7 +64,9 @@ import { DeliveryOptionsModule } from './delivery-options/delivery-options.modul
     AddressModule,
     CartModule,
     OrdersModule,
-    DeliveryOptionsModule
+    DeliveryOptionsModule,
+    PincodeModule,
+    BuyNowModule
   ],
 })
 export class AppModule {}

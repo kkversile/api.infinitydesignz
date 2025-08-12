@@ -53,9 +53,9 @@ export class CouponController {
 @Post('apply-buy-now')
 applyCouponBuyNow(
   @Req() req,
-  @Body() body: { code: string; productId: number; variantId?: number; quantity: number }
+  @Body() body: { code: string }
 ) {
-  return this.service.applyCouponForItem(req.user.id, body);
+return this.service.applyCouponForItem(req.user.id, body.code);
 }
   @Delete(":id")
   remove(@Param("id") id: string) {
