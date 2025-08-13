@@ -2,7 +2,9 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSliderDto } from './dto/create-slider.dto';
 import { UpdateSliderDto } from './dto/update-slider.dto';
-
+import { SLIDERS_IMAGE_PATH } from '../config/constants';
+const formatImageUrl = (fileName: string | null) =>
+  fileName ? `${SLIDERS_IMAGE_PATH}${fileName}` : null;
 @Injectable()
 export class SliderService {
   constructor(private prisma: PrismaService) {}
@@ -11,8 +13,11 @@ export class SliderService {
     const sliders = await this.prisma.slider.findMany({
       orderBy: { priority: 'asc' },
     });
-
-    return sliders;
+const formatted = sliders.map((slider) => ({
+      ...slider,
+      image_url: formatImageUrl(slider.image_url),
+    }));
+    return formatted;
   }
 
   async create(data: CreateSliderDto & { image_url: string }) {

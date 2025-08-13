@@ -20,6 +20,7 @@ export class SliderRightController {
 
   @Get()
   findOne() {
+    console.log('KKKK');
     return this.sliderService.findOne();
   }
 
