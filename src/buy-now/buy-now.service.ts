@@ -1,124 +1,245 @@
-import { Injectable, NotFoundException, BadRequestException } from "@nestjs/common";
-import { PrismaService } from "../prisma/prisma.service";
-import { CreateBuyNowDto } from "./dto/create-buy-now.dto";
-import { UpdateBuyNowDto } from "./dto/update-buy-now.dto";
-import { Prisma } from "@prisma/client";
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { PRODUCT_IMAGE_PATH } from '../config/constants';
+import { CreateBuyNowDto } from './dto/create-buy-now.dto';
+import { UpdateBuyNowDto } from './dto/update-buy-now.dto';
+
+const formatImageUrl = (fileName: string | null | undefined) =>
+  fileName ? `${PRODUCT_IMAGE_PATH}${fileName}` : null;
 
 @Injectable()
 export class BuyNowService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Replica of Cart's getUserCart response:
+   * {
+   *   items: [...],
+   *   priceSummary: {
+   *     totalMRP, discountOnMRP, couponDiscount, totalAfterDiscount,
+   *     platformFee, shippingFee, finalPayable
+   *   }
+   * }
+   */
   async getBuyNow(userId: number) {
-    const item = await this.prisma.buyNowItem.findUnique({
+    const rawItem = await this.prisma.buyNowItem.findUnique({
       where: { userId },
       include: {
-        product: true,
-        variant: true,
+        product: {
+          include: {
+            brand: true,
+            color: true,
+            size: true,
+            images: true, // [{ url, alt }]
+          },
+        },
+        variant: {
+          include: {
+            color: true,
+            size: true,
+            images: true, // [{ url, alt }]
+          },
+        },
       },
     });
 
+    if (!rawItem) {
+      const platformFee = 20;
+      const shippingFee = 80;
+      return {
+        items: [],
+        priceSummary: {
+          totalMRP: 0,
+          discountOnMRP: 0,
+          couponDiscount: 0,
+          totalAfterDiscount: 0,
+          platformFee,
+          shippingFee,
+          finalPayable: platformFee + shippingFee,
+        },
+      };
+    }
+
+    const useVariant = rawItem.variant !== null;
+
+    const mainImage = useVariant
+      ? rawItem.variant?.images?.[0]?.url ||
+        rawItem.product?.images?.[0]?.url ||
+        null
+      : rawItem.product?.images?.[0]?.url || null;
+
+    const imageAlt = useVariant
+      ? rawItem.variant?.images?.[0]?.alt ||
+        rawItem.product?.images?.[0]?.alt ||
+        ''
+      : rawItem.product?.images?.[0]?.alt || '';
+
+    const formattedImageUrl = formatImageUrl(mainImage);
+
+    const price = useVariant
+      ? rawItem.variant?.sellingPrice ?? rawItem.product?.sellingPrice
+      : rawItem.product?.sellingPrice;
+
+    const mrp = useVariant
+      ? rawItem.variant?.mrp ?? rawItem.product?.mrp
+      : rawItem.product?.mrp;
+
+    const productData = {
+      title: rawItem.product?.title,
+      brand: rawItem.product?.brand?.name,
+      price,
+      mrp,
+      color: useVariant
+        ? rawItem.variant?.color?.label
+        : rawItem.product?.color?.label,
+      size: useVariant
+        ? rawItem.variant?.size?.title
+        : rawItem.product?.size?.title,
+      imageUrl: formattedImageUrl,
+      imageAlt,
+    };
+
+    const items = [
+      {
+        id: rawItem.id, // buyNowItem id
+        productId: rawItem.productId,
+        variantId: rawItem.variantId,
+        quantity: rawItem.quantity,
+        [useVariant ? 'variant' : 'product']: productData,
+      },
+    ];
+
+    // --- price summary (replicated from Cart) ---
+    let totalMRP = (mrp || 0) * rawItem.quantity;
+    let totalSellingPrice = (price || 0) * rawItem.quantity;
+
+    const appliedCoupon = await this.prisma.appliedCoupon.findFirst({
+      where: { userId, orderId: null },
+      include: { coupon: true },
+    });
+
+    let couponDiscount = 0;
+
+    if (appliedCoupon?.coupon?.status) {
+      const coupon = appliedCoupon.coupon;
+      const now = new Date();
+      const isValidDate =
+        (!coupon.fromDate || coupon.fromDate <= now) &&
+        (!coupon.toDate || coupon.toDate >= now);
+
+      const meetsMinOrder = totalSellingPrice >= coupon.minOrderAmount;
+
+      if (isValidDate && meetsMinOrder) {
+        const eligibleAmount = totalSellingPrice;
+        couponDiscount =
+          coupon.priceType === 'PERCENTAGE'
+            ? (coupon.value / 100) * eligibleAmount
+            : Math.min(coupon.value, eligibleAmount);
+      }
+    }
+
+    const platformFee = 20;
+    const shippingFee = 80;
+
     return {
-      item: item
-        ? {
-            id: item.id,
-            productId: item.productId,
-            variantId: item.variantId,
-            quantity: item.quantity,
-            product: item.product
-              ? {
-                  id: item.product.id,
-                  title: (item.product as any).title ?? null,
-                  mrp: (item.product as any).mrp ?? null,
-                  sellingPrice: (item.product as any).sellingPrice ?? null,
-                }
-              : null,
-            variant: item.variant
-              ? {
-                id: item.variant.id,
-                sku: (item.variant as any).sku ?? null,
-                mrp: (item.variant as any).mrp ?? null,
-                sellingPrice: (item.variant as any).sellingPrice ?? null,
-              }
-              : null,
-          }
-        : null,
+      items,
+      priceSummary: {
+        totalMRP,
+        discountOnMRP: totalMRP - totalSellingPrice,
+        couponDiscount,
+        totalAfterDiscount: totalSellingPrice - couponDiscount,
+        platformFee,
+        shippingFee,
+        finalPayable:
+          totalSellingPrice - couponDiscount + platformFee + shippingFee,
+      },
     };
   }
 
   /**
-   * Validate product exists; if variantId provided, validate variant exists & belongs to product.
-   * Throws 404/400 with clear messages before hitting DB FKs.
+   * Set/replace the Buy Now item for the user.
+   * Mirrors Cart "add" behavior and returns the same response shape.
    */
-  private async validateProductAndVariant(productId: number, variantId?: number | null) {
-    const product = await this.prisma.product.findUnique({
-      where: { id: productId },
-      select: { id: true },
-    });
-    if (!product) throw new NotFoundException("Product not found");
-
-    if (variantId) {
-      const variant = await this.prisma.variant.findUnique({
-        where: { id: variantId },
-        select: { id: true, productId: true },
+  async setBuyNow(userId: number, dto: CreateBuyNowDto) {
+    // Validate variant belongs to product (avoid prisma.productVariant accessor)
+    if (dto.variantId) {
+      const productWithVariant = await this.prisma.product.findFirst({
+        where: { id: dto.productId, variants: { some: { id: dto.variantId } } },
+        select: { id: true },
       });
-      if (!variant) throw new NotFoundException("Variant not found");
-      if (variant.productId !== productId) {
-        throw new BadRequestException("Variant does not belong to the given product");
+      if (!productWithVariant) {
+        throw new BadRequestException(
+          'Variant does not belong to the provided product',
+        );
       }
     }
+
+    await this.prisma.buyNowItem.upsert({
+      where: { userId },
+      create: {
+        userId,
+        productId: dto.productId,
+        variantId: dto.variantId ?? null,
+        quantity: dto.quantity ?? 1,
+      },
+      update: {
+        productId: dto.productId,
+        variantId: dto.variantId ?? null,
+        quantity: dto.quantity ?? 1,
+      },
+    });
+
+    return {
+      message: 'Added to cart successfully.',
+      data: await this.getBuyNow(userId),
+    };
   }
 
   /**
-   * Set/replace Buy Now item (single per user).
+   * Update quantity of Buy Now item; response mirrors Cart.
    */
-  async setBuyNow(userId: number, dto: CreateBuyNowDto) {
-    await this.validateProductAndVariant(dto.productId, dto.variantId ?? null);
-
-    try {
-      const item = await this.prisma.buyNowItem.upsert({
-        where: { userId },
-        create: {
-          userId,
-          productId: dto.productId,
-          variantId: dto.variantId ?? null,
-          quantity: dto.quantity,
-        },
-        update: {
-          productId: dto.productId,
-          variantId: dto.variantId ?? null,
-          quantity: dto.quantity,
-        },
-        include: { product: true, variant: true },
-      });
-
-      return { message: "Buy Now item set", item };
-    } catch (err: any) {
-      // Translate FK errors to readable messages
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2003") {
-        // P2003 = Foreign key constraint failed
-        throw new BadRequestException("Invalid productId/variantId (foreign key constraint failed)");
-      }
-      throw err;
-    }
-  }
-
-  async updateQuantity(userId: number, dto: UpdateBuyNowDto) {
+  async updateBuyNow(userId: number, dto: UpdateBuyNowDto) {
     const existing = await this.prisma.buyNowItem.findUnique({ where: { userId } });
-    if (!existing) throw new NotFoundException("No Buy Now item found");
+    if (!existing) {
+      throw new NotFoundException('Cart item not found or unauthorized');
+    }
 
-    const item = await this.prisma.buyNowItem.update({
+    await this.prisma.buyNowItem.update({
       where: { userId },
-      data: { quantity: dto.quantity },
-      include: { product: true, variant: true },
+      data: {
+        quantity:
+          typeof dto.quantity === 'number' ? dto.quantity : existing.quantity,
+      },
     });
 
-    return { message: "Quantity updated", item };
+    return {
+      message: 'Cart updated successfully.',
+      data: await this.getBuyNow(userId),
+    };
   }
 
+  /**
+   * Alias to satisfy controllers calling updateQuantity.
+   */
+  async updateQuantity(userId: number, dto: UpdateBuyNowDto) {
+    return this.updateBuyNow(userId, dto);
+  }
+
+  /**
+   * Clear Buy Now item; returns the same cart-like payload (empty items + priceSummary).
+   */
   async clear(userId: number) {
-    try {
+    const existing = await this.prisma.buyNowItem.findUnique({ where: { userId } });
+    if (existing) {
       await this.prisma.buyNowItem.delete({ where: { userId } });
-    } catch (_) {}
-    return { message: "Buy Now item cleared" };
+    }
+    return {
+      message: 'Removed from cart successfully.',
+      data: await this.getBuyNow(userId),
+    };
   }
 }
