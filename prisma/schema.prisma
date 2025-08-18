@@ -484,22 +484,22 @@ model Order {
   userId        Int
   addressId     Int
   paymentMethod PaymentMethod
-  couponId      Int? // optional
+  couponId      Int?
   status        OrderStatus   @default(PENDING)
   subtotal      Float
   shippingFee   Float
   gst           Float
   totalAmount   Float
   note          String?
+  orderFrom     String        @default("web")   // NEW FIELD
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
-  user             User            @relation(fields: [userId], references: [id])
-  address          Address         @relation(fields: [addressId], references: [id])
-  coupon           Coupon?         @relation(fields: [couponId], references: [id])
-  items            OrderItem[]
-  payment          Payment?
- 
+  user     User      @relation(fields: [userId], references: [id])
+  address  Address   @relation(fields: [addressId], references: [id])
+  coupon   Coupon?   @relation(fields: [couponId], references: [id])
+  items    OrderItem[]
+  payment  Payment?
 
   @@map("orders")
 }

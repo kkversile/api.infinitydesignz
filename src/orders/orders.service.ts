@@ -7,6 +7,19 @@ import { PrismaService } from "../prisma/prisma.service";
 import { CreateOrderDto } from "./dto/create-order.dto";
 import { BuyNowDto } from "./dto/buy-now.dto";
 
+type ListOrdersParams = {
+  status?: 'PENDING' | 'CONFIRMED' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED';
+  paymentStatus?: 'PENDING' | 'SUCCESS' | 'FAILED' | 'REFUNDED';
+  orderId?: string;     // numeric "123" or "SHPO00000123"
+  dateFrom?: string;    // "YYYY-MM-DD" or ISO
+  dateTo?: string;      // "YYYY-MM-DD" or ISO
+  active?: boolean;     // Active/Inactive toggle
+  orderFrom?: string;   // "web" | "app"
+  page?: number;        // default 1
+  pageSize?: number;    // default 10
+};
+
+
 @Injectable()
 export class OrdersService {
   constructor(private prisma: PrismaService) {}
@@ -117,7 +130,7 @@ async placeOrder(dto: CreateOrderDto, userId: number) {
 }
 
 
-  async listOrders(userId: number) {
+  async listUserOrders(userId: number) {
     return this.prisma.order.findMany({
       where: { userId },
       include: {
@@ -126,6 +139,116 @@ async placeOrder(dto: CreateOrderDto, userId: number) {
       orderBy: { createdAt: "desc" },
     });
   }
+
+
+async listOrders(params: ListOrdersParams = {}) {
+  const {
+    status,
+    paymentStatus,
+    orderId,
+    dateFrom,
+    dateTo,
+    active,
+    orderFrom,
+    page = 1,
+    pageSize = 10,
+  } = params;
+
+  const AND: any[] = [];
+
+  // Delivery Status (Order.status)
+  if (status) {
+    AND.push({ status });
+  }
+
+  // Payment Status
+  if (paymentStatus) {
+    AND.push({ payment: { is: { status: paymentStatus } } });
+  }
+
+  // Order ID search
+  if (orderId && orderId.trim()) {
+    const raw = orderId.trim().toUpperCase();
+    const numeric = Number(raw.replace(/^SHPO/, ''));
+    if (!Number.isNaN(numeric)) {
+      AND.push({ id: numeric });
+    }
+  }
+
+  // Date filter
+  if (dateFrom || dateTo) {
+    const createdAt: any = {};
+    if (dateFrom) createdAt.gte = new Date(dateFrom);
+    if (dateTo) {
+      const end = new Date(dateTo);
+      end.setHours(23, 59, 59, 999);
+      createdAt.lte = end;
+    }
+    AND.push({ createdAt });
+  }
+
+  // Active/Inactive
+  if (typeof active === 'boolean') {
+    if (active) {
+      AND.push({ NOT: { status: 'CANCELLED' as const } });
+    } else {
+      AND.push({ status: 'CANCELLED' as const });
+    }
+  }
+
+  // Order From
+  if (orderFrom) {
+    AND.push({ orderFrom });
+  }
+
+  const where = AND.length ? { AND } : undefined;
+
+  // Pagination
+  const take = Math.max(1, Number(pageSize));
+  const skip = Math.max(0, (Number(page) - 1) * take);
+
+  // Total count
+  const total = await this.prisma.order.count({ where });
+
+  // Fetch data
+  const rows = await this.prisma.order.findMany({
+    where,
+    include: {
+      items: { select: { quantity: true } },
+      payment: { select: { status: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+    skip,
+    take,
+  });
+
+  // Map to grid shape
+  const data = rows.map((o) => {
+    const qty = (o.items ?? []).reduce((s, it) => s + (Number(it.quantity) || 0), 0);
+    const orderNo = `SHPO${String(o.id).padStart(8, '0')}`;
+    return {
+      id: o.id,
+      orderNo,
+      qty,
+      orderDate: o.createdAt,
+      price: o.totalAmount,
+      orderFrom: o.orderFrom,
+      paymentStatus: o.payment?.status ?? null,
+      status: o.status,
+    };
+  });
+
+  return {
+    data,
+    pagination: {
+      total,
+      page: Number(page),
+      pageSize: take,
+      totalPages: Math.max(1, Math.ceil(total / take)),
+    },
+  };
+}
+
 
  async generateInvoice(orderId: number) {
   const order = await this.getOrderDetails(orderId);
