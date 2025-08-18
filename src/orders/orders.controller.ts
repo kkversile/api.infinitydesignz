@@ -47,13 +47,13 @@ export class OrdersController {
 
   // ───────────────────────── ADMIN/LIST WITH FILTERS ─────────────────────────
   // Example:
-  // GET /orders?status=DELIVERED&paymentStatus=SUCCESS&orderId=SHPO00001234&dateFrom=2025-02-01&dateTo=2025-02-28&active=true&orderFrom=web&page=1&pageSize=10
+  // GET /orders?status=DELIVERED&paymentStatus=SUCCESS&orderId=ORD00001234&dateFrom=2025-02-01&dateTo=2025-02-28&active=true&orderFrom=web&page=1&pageSize=10
   @UseGuards(JwtAuthGuard)
   @Get()
   listOrders(@Query() q: any) {
     return this.ordersService.listOrders({
       status: q.status,                   // PENDING | CONFIRMED | SHIPPED | DELIVERED | CANCELLED
-      orderId: q.orderId,                 // e.g. SHPO00001234
+      orderId: q.orderId,                 // e.g. ORD00001234
       dateFrom: q.dateFrom,               // YYYY-MM-DD or ISO
       dateTo: q.dateTo,                   // YYYY-MM-DD or ISO
       orderFrom: q.orderFrom,             // "web" | "app" | "pos"

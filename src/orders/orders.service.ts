@@ -10,7 +10,7 @@ import { BuyNowDto } from "./dto/buy-now.dto";
 type ListOrdersParams = {
   status?: 'PENDING' | 'CONFIRMED' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED';
   paymentStatus?: 'PENDING' | 'SUCCESS' | 'FAILED' | 'REFUNDED';
-  orderId?: string;     // numeric "123" or "SHPO00000123"
+  orderId?: string;     // numeric "123" or "ORD00000123"
   dateFrom?: string;    // "YYYY-MM-DD" or ISO
   dateTo?: string;      // "YYYY-MM-DD" or ISO
   active?: boolean;     // Active/Inactive toggle
@@ -169,7 +169,7 @@ async listOrders(params: ListOrdersParams = {}) {
   // Order ID search
   if (orderId && orderId.trim()) {
     const raw = orderId.trim().toUpperCase();
-    const numeric = Number(raw.replace(/^SHPO/, ''));
+    const numeric = Number(raw.replace(/^ORD/, ''));
     if (!Number.isNaN(numeric)) {
       AND.push({ id: numeric });
     }
@@ -225,7 +225,7 @@ async listOrders(params: ListOrdersParams = {}) {
   // Map to grid shape
   const data = rows.map((o) => {
     const qty = (o.items ?? []).reduce((s, it) => s + (Number(it.quantity) || 0), 0);
-    const orderNo = `SHPO${String(o.id).padStart(8, '0')}`;
+    const orderNo = `ORD${String(o.id).padStart(8, '0')}`;
     return {
       id: o.id,
       orderNo,
