@@ -369,6 +369,7 @@ async getOrderDetails(orderId: number) {
       variantId: item.variantId,
       quantity: item.quantity,
       total: item.total,
+      status: item.status,
       [useVariant ? 'variant' : 'product']: productData,
     };
   });
