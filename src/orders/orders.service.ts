@@ -6,7 +6,16 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateOrderDto } from "./dto/create-order.dto";
 import { BuyNowDto } from "./dto/buy-now.dto";
+// orders.service.ts
+import { OrderStatus, PaymentStatus } from '@prisma/client';
 
+type UpdateOrderPayload =
+  | string
+  | {
+      status?: OrderStatus | string;
+      paymentStatus?: PaymentStatus | string;
+      note?: string;
+    };
 type ListOrdersParams = {
   status?: 'PENDING' | 'CONFIRMED' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED';
   paymentStatus?: 'PENDING' | 'SUCCESS' | 'FAILED' | 'REFUNDED';
@@ -262,7 +271,11 @@ async listOrders(params: ListOrdersParams = {}) {
   };
 }
 
+// OrdersService.ts
+
+// orders.service.ts
 async getOrderDetails(orderId: number) {
+  // 1) Fetch the order WITHOUT including user (avoid Prisma's required-rel error)
   const order = await this.prisma.order.findUnique({
     where: { id: orderId },
     include: {
@@ -270,28 +283,49 @@ async getOrderDetails(orderId: number) {
         include: {
           product: {
             include: {
-              brand: { select: { name: true } },
+              brand:  { select: { name: true } },
               images: { where: { isMain: true }, select: { url: true, alt: true } },
-              color: { select: { label: true } },
-              size: { select: { title: true } },
+              color:  { select: { label: true } },
+              size:   { select: { title: true } },
             },
           },
           variant: {
             include: {
               images: { where: { isMain: true }, select: { url: true, alt: true } },
-              color: { select: { label: true } },
-              size: { select: { title: true } },
+              color:  { select: { label: true } },
+              size:   { select: { title: true } },
             },
           },
         },
       },
       payment: true,
       address: true,
-      coupon: true,
+      coupon:  true,
+      // 🚫 no `user` here
     },
   });
 
   if (!order) throw new NotFoundException('Order not found');
+
+  // 2) Fetch user separately; handle orphaned order safely
+  const userRecord = await this.prisma.user.findUnique({
+    where: { id: order.userId },
+    select: { id: true, name: true, phone: true, email: true },
+  });
+
+  const user = userRecord
+    ? {
+        id: userRecord.id,
+        name: userRecord.name ?? null,
+        mobile: userRecord.phone ?? null,
+        email: userRecord.email ?? null,
+      }
+    : {
+        id: order.userId,
+        name: null,
+        mobile: null,
+        email: null,
+      };
 
   let totalMRP = 0;
   let totalSellingPrice = 0;
@@ -321,7 +355,7 @@ async getOrderDetails(orderId: number) {
       price,
       mrp,
       color: useVariant ? item.variant?.color?.label : item.product?.color?.label,
-      size: useVariant ? item.variant?.size?.title : item.product?.size?.title,
+      size:  useVariant ? item.variant?.size?.title  : item.product?.size?.title,
       imageUrl: mainImage,
       imageAlt,
     };
@@ -336,22 +370,26 @@ async getOrderDetails(orderId: number) {
     };
   });
 
-  // 🔖 Fees (keep in sync with order creation logic)
+  // Fees (keep consistent with creation logic)
   const platformFee = 20;
   const shippingFee = Number(order.shippingFee) || 0;
 
-  // ✅ Derive coupon discount from stored totals (no re-validation)
-  // finalPayable = totalSellingPrice - couponDiscount + platformFee + shippingFee
-  // ⇒ couponDiscount = totalSellingPrice + platformFee + shippingFee - order.totalAmount
+  // Derive coupon discount from stored totals
   const storedFinal = Number(order.totalAmount) || 0;
   let couponDiscount = totalSellingPrice + platformFee + shippingFee - storedFinal;
-  // Safety clamp
-  if (!order.coupon) couponDiscount = 0; // no coupon linked → no discount shown
-  couponDiscount = Math.max(0, Math.min(totalSellingPrice, Math.round(couponDiscount * 100) / 100));
+  if (!order.coupon) couponDiscount = 0;
+  couponDiscount = Math.max(
+    0,
+    Math.min(totalSellingPrice, Math.round(couponDiscount * 100) / 100)
+  );
 
   return {
     id: order.id,
+    status: order.status,
+    orderNo: `ORD${String(order.id).padStart(8, '0')}`,
+    orderFrom: order.orderFrom,
     createdAt: order.createdAt,
+    user,                 // ✅ now always present, even if orphaned
     address: order.address,
     payment: order.payment,
     coupon: order.coupon
@@ -372,6 +410,7 @@ async getOrderDetails(orderId: number) {
     },
   };
 }
+
 
 /** Place a single-item order directly from PDP ("Buy Now") using client-provided discount */
 async buyNow(dto: BuyNowDto, userId: number) {
@@ -509,6 +548,111 @@ if (couponId != null) { // covers undefined & null
   }
 
   return this.getOrderDetails(order.id);
+}
+
+
+
+
+async updateOrder(orderId: number, payload: UpdateOrderPayload) {
+  // 0) Fetch current order & payment
+  const existing = await this.prisma.order.findUnique({
+    where: { id: orderId },
+    include: { payment: true },
+  });
+  if (!existing) throw new NotFoundException('Order not found');
+
+  // 1) Normalize input
+  const body =
+    typeof payload === 'string' ? { status: payload } : (payload ?? {});
+
+  const nextStatusRaw = body.status?.toString().toUpperCase();
+  const nextPayStatusRaw = body.paymentStatus?.toString().toUpperCase();
+
+  // 2) Validate enums (if provided)
+  const allowedOrder = Object.values(OrderStatus);
+  const allowedPay = Object.values(PaymentStatus);
+
+  let nextStatus: OrderStatus | undefined;
+  if (nextStatusRaw) {
+    if (!allowedOrder.includes(nextStatusRaw as OrderStatus)) {
+      throw new BadRequestException(
+        `Invalid order status "${nextStatusRaw}". Allowed: ${allowedOrder.join(', ')}`
+      );
+    }
+    nextStatus = nextStatusRaw as OrderStatus;
+  }
+
+  let nextPayStatus: PaymentStatus | undefined;
+  if (nextPayStatusRaw) {
+    if (!allowedPay.includes(nextPayStatusRaw as PaymentStatus)) {
+      throw new BadRequestException(
+        `Invalid payment status "${nextPayStatusRaw}". Allowed: ${allowedPay.join(', ')}`
+      );
+    }
+    nextPayStatus = nextPayStatusRaw as PaymentStatus;
+  }
+
+  // 3) Optional simple transition checks (customize as needed)
+  // e.g., cannot DELIVERED from PENDING directly, etc. (commented; enable if you want)
+  // const invalid =
+  //   existing.status === 'PENDING' && nextStatus === 'DELIVERED';
+  // if (invalid) throw new BadRequestException('Invalid status transition');
+
+  // 4) Build updates
+  const orderData: any = {};
+  if (nextStatus) orderData.status = nextStatus;
+  if (typeof body.note === 'string') orderData.note = body.note;
+
+  // 5) Apply updates (order + optional payment) in a transaction
+  await this.prisma.$transaction(async (tx) => {
+    if (Object.keys(orderData).length > 0) {
+      await tx.order.update({
+        where: { id: orderId },
+        data: orderData,
+      });
+    }
+
+    // If explicit paymentStatus provided, update it
+    if (nextPayStatus) {
+      if (!existing.payment) {
+        throw new BadRequestException('No payment record found for this order');
+      }
+      await tx.payment.update({
+        where: { orderId },
+        data: {
+          status: nextPayStatus,
+          paidAt:
+            nextPayStatus === 'SUCCESS'
+              ? new Date()
+              : existing.payment.paidAt ?? null,
+        },
+      });
+    }
+
+    // Optional auto-rules (toggle as per your business logic)
+    // Example: when marking order DELIVERED, auto mark COD as SUCCESS if still PENDING
+    if (
+      nextStatus === 'DELIVERED' &&
+      existing.payment &&
+      existing.payment.status === 'PENDING'
+    ) {
+      await tx.payment.update({
+        where: { orderId },
+        data: { status: 'SUCCESS', paidAt: new Date() },
+      });
+    }
+
+    // Example: when CANCELLED and payment was SUCCESS, you might mark REFUNDED
+    // if (nextStatus === 'CANCELLED' && existing.payment?.status === 'SUCCESS') {
+    //   await tx.payment.update({
+    //     where: { orderId },
+    //     data: { status: 'REFUNDED' },
+    //   });
+    // }
+  });
+
+  // 6) Return the fresh order details (with user/address/items etc.)
+  return this.getOrderDetails(orderId);
 }
 
 

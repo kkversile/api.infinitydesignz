@@ -7,6 +7,7 @@ import {
   UseGuards,
   Req,
   Query,
+  Patch,
 } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -63,9 +64,15 @@ export class OrdersController {
   }
 
   // ───────────────────────── MUST BE LAST TO AVOID COLLISIONS ─────────────────
-  @UseGuards(AuthGuard)
+
   @Get(':id')
   getOrder(@Param('id') id: string) {
     return this.ordersService.getOrderDetails(+id);
   }
+@Patch(':id')
+updateOrder(@Param('id') id: string, @Body() body: any) {
+  return this.ordersService.updateOrder(+id, body);
 }
+  
+}
+
