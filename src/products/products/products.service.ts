@@ -427,6 +427,7 @@ async searchProducts(q: QueryProductsDto) {
   const subCategoryId = toInt(q.subCategoryId);
   const listSubCatId = toInt(q.listSubCatId);
 
+  
   const minPrice = toFloat(q.minPrice);
   const maxPrice = toFloat(q.maxPrice);
 

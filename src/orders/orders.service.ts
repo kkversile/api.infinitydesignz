@@ -2,12 +2,15 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateOrderDto } from "./dto/create-order.dto";
 import { BuyNowDto } from "./dto/buy-now.dto";
 // orders.service.ts
-import { OrderStatus, PaymentStatus } from '@prisma/client';
+import { OrderStatus, PaymentStatus,OrderItemStatus  } from '@prisma/client';
+import { UpdateOrderItemDto, RequestCancelItemDto } from './dto/update-order-item.dto';
+const ORDER_FINAL_STATES: OrderStatus[] = ['DELIVERED', 'CANCELLED'] as any;
 
 type UpdateOrderPayload =
   | string
@@ -655,5 +658,101 @@ async updateOrder(orderId: number, payload: UpdateOrderPayload) {
   return this.getOrderDetails(orderId);
 }
 
+ /** User asks to cancel a single item (moves item to CANCEL_REQUESTED) */
+  async requestCancelItem(
+    itemId: number,
+    body: RequestCancelItemDto,
+    userId: number,
+  ) {
+    const item = await this.prisma.orderItem.findUnique({
+      where: { id: itemId },
+      include: { order: true },
+    });
+    if (!item) throw new NotFoundException('Order item not found');
+
+    // Ownership check
+    if (item.order.userId !== userId) {
+      throw new ForbiddenException('You do not own this order');
+    }
+
+    // Ensure the item belongs to the provided orderId
+    if (item.orderId !== body.orderId) {
+      throw new BadRequestException('orderId does not match item’s order');
+    }
+
+    // Block if order in final state
+    if (ORDER_FINAL_STATES.includes(item.order.status)) {
+      throw new BadRequestException(`Order is ${item.order.status}; item cannot be changed`);
+    }
+
+    // Idempotency / state sanity
+    if (item.status === OrderItemStatus.CANCEL_REQUESTED || item.status === OrderItemStatus.CANCELLED) {
+      return item; // nothing to change
+    }
+
+    const updated = await this.prisma.orderItem.update({
+      where: { id: itemId },
+      data: {
+        status: OrderItemStatus.CANCEL_REQUESTED,
+        moderationNote: body.note ?? item.moderationNote,
+      },
+    });
+
+    return updated;
+  }
+
+  /** Admin approves or cancels an item (APPROVED / CANCELLED) */
+  async updateOrderItemStatus(
+    itemId: number,
+    body: UpdateOrderItemDto,
+    
+  ) {
+    // Require admin (adjust roles if needed)
+  
+    const item = await this.prisma.orderItem.findUnique({
+      where: { id: itemId },
+      include: { order: { include: { items: { select: { id: true, status: true } } } } },
+    });
+    if (!item) throw new NotFoundException('Order item not found');
+
+    if (item.orderId !== body.orderId) {
+      throw new BadRequestException('orderId does not match item’s order');
+    }
+
+    // Block if order is in terminal state
+    if (ORDER_FINAL_STATES.includes(item.order.status)) {
+      throw new BadRequestException(`Order is ${item.order.status}; item cannot be changed`);
+    }
+
+    const next = body.status.toUpperCase() as 'APPROVED' | 'CANCELLED';
+    const nextEnum =
+      next === 'APPROVED' ? OrderItemStatus.APPROVED : OrderItemStatus.CANCELLED;
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const updatedItem = await tx.orderItem.update({
+        where: { id: itemId },
+        data: {
+          status: nextEnum,
+          moderationNote: body.note ?? item.moderationNote,
+         
+        },
+      });
+
+      // If all items are CANCELLED after this change, mark order CANCELLED
+      if (
+        nextEnum === OrderItemStatus.CANCELLED &&
+        item.order.items.every((it) => (it.id === itemId ? true : it.status === OrderItemStatus.CANCELLED))
+      ) {
+        await tx.order.update({
+          where: { id: item.orderId },
+          data: { status: 'CANCELLED' },
+        });
+      }
+
+      return updatedItem;
+    });
+
+    return updated;
+  }
 
 }
