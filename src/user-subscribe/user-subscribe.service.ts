@@ -7,23 +7,17 @@ import { UpdateUserSubscribeDto } from './dto/update-user-subscribe.dto';
 export class UserSubscribeService {
   constructor(private prisma: PrismaService) {}
 
-  /** Create a new user order (subscriber) */
+  /** Create a new subscriber */
   async create(dto: CreateUserSubscribeDto) {
     return this.prisma.userSubscribe.create({
       data: {
         email: dto.email,
-        ...(dto.subscribedAt
-          ? { subscribed_at: new Date(dto.subscribedAt) }
-          : {}),
+        ...(dto.subscribedAt ? { subscribed_at: new Date(dto.subscribedAt) } : {}),
       },
     });
   }
 
-  /**
-   * List user orders with optional:
-   *  - search (email)
-   *  - pagination (page, take)
-   */
+  /** List subscribers with search + pagination */
   async findAll(params: { search?: string; page?: number; take?: number }) {
     const page = Math.max(1, params.page ?? 1);
     const take = Math.min(100, Math.max(1, params.take ?? 10));
@@ -50,29 +44,38 @@ export class UserSubscribeService {
   /** Get one by ID */
   async findOne(id: number) {
     const row = await this.prisma.userSubscribe.findUnique({ where: { id } });
-    if (!row) throw new NotFoundException(`UserSUbscribe ${id} not found`);
+    if (!row) throw new NotFoundException(`UserSubscribe ${id} not found`);
     return row;
   }
 
-  /** Update (email and/or subscribed date) */
+  /** Update by ID */
   async update(id: number, dto: UpdateUserSubscribeDto) {
     await this.ensureExists(id);
     return this.prisma.userSubscribe.update({
       where: { id },
       data: {
         email: dto.email,
-        ...(dto.subscribedAt
-          ? { subscribed_at: new Date(dto.subscribedAt) }
-          : {}),
+        ...(dto.subscribedAt ? { subscribed_at: new Date(dto.subscribedAt) } : {}),
       },
     });
   }
 
-  /** Delete (hard delete) */
-  async remove(id: number) {
-    await this.ensureExists(id);
-    await this.prisma.userSubscribe.delete({ where: { id } });
-    return { message: 'UnSubscribed successfully' };
+  /** Delete by email (hard delete) */
+  async removeByEmail(email: string) {
+    const result = await this.prisma.userSubscribe.deleteMany({
+      where: { email },
+    });
+
+    if (result.count === 0) {
+      throw new NotFoundException(`Subscriber with email "${email}" not found`);
+    }
+
+    return {
+      message:
+        result.count === 1
+          ? 'Unsubscribed successfully'
+          : `Unsubscribed ${result.count} entries successfully`,
+    };
   }
 
   private async ensureExists(id: number) {

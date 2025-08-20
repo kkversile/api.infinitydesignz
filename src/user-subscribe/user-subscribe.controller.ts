@@ -9,6 +9,7 @@ import {
   Post,
   Query,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import { UserSubscribeService } from './user-subscribe.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -45,15 +46,22 @@ export class UserSubscribeController {
     return this.service.findOne(id);
   }
 
-  // UPDATE
+  // UPDATE BY ID
   @Patch(':id')
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateUserSubscribeDto) {
     return this.service.update(id, dto);
   }
 
-  // DELETE
-  @Delete(':id')
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.service.remove(id);
+  /**
+   * DELETE BY EMAIL (from request body, not ID)
+   * Usage: DELETE /user-subscribe
+   * Payload: { "email": "user@example.com" }
+   */
+  @Delete()
+  removeByEmail(@Body('email') email?: string) {
+    if (!email || !email.trim()) {
+      throw new BadRequestException('Body param "email" is required');
+    }
+    return this.service.removeByEmail(email.trim());
   }
 }
