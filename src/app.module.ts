@@ -38,6 +38,7 @@ import { PincodeModule } from './pincode/pincode.module';
 import { BuyNowModule } from './buy-now/buy-now.module';
 import { ContactsModule } from './contacts/contacts.module';
 import { UserSubscribeModule } from './user-subscribe/user-subscribe.module';
+import {FiltersModule} from './filters/filters.module';
 @Module({
   imports: [      
 
@@ -69,7 +70,8 @@ import { UserSubscribeModule } from './user-subscribe/user-subscribe.module';
     PincodeModule,
     BuyNowModule,
     UserSubscribeModule,
-    ContactsModule
+    ContactsModule,
+    FiltersModule
   ],
 })
 export class AppModule {}
