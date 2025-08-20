@@ -37,7 +37,7 @@ async searchProducts(@Query() query: QueryProductsDto) {
       variantId ? parseInt(variantId) : undefined,
     );
   }
-@UseGuards(JwtAuthGuard)
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.productsService.findOne(+id);
