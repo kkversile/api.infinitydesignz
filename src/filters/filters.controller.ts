@@ -6,8 +6,8 @@ import { GetFacetsDto } from './dto/get-facets.dto';
 export class FiltersController {
   constructor(private readonly filtersService: FiltersService) {}
 
-  // GET /filters/facets?categoryId=&brandId=&q=&minPrice=&maxPrice=&showEmpty=
-  @Get('facets')
+  // GET /filters?categoryId=&brandId=&q=&minPrice=&maxPrice=&showEmpty=
+  @Get()
   getFacets(@Query() dto: GetFacetsDto) {
     return this.filtersService.getFacets(dto);
   }
