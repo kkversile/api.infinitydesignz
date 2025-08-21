@@ -32,6 +32,38 @@ type ListOrdersParams = {
 };
 
 
+type IncomingOrderItem = {
+  productId: number;
+  variantId?: number | null;
+  quantity: number;
+  price: number;   // per-unit price
+  total: number;   // line total
+};
+
+function normalizeItems(input: unknown): IncomingOrderItem[] {
+  if (Array.isArray(input)) return input as IncomingOrderItem[];
+
+  if (typeof input === 'string') {
+    try {
+      const parsed = JSON.parse(input);
+      if (Array.isArray(parsed)) return parsed as IncomingOrderItem[];
+      if (parsed && typeof parsed === 'object') {
+        return Object.values(parsed as Record<string, unknown>) as IncomingOrderItem[];
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  }
+
+  if (input && typeof input === 'object') {
+    return Object.values(input as Record<string, unknown>) as IncomingOrderItem[];
+  }
+
+  return [];
+}
+
+
 @Injectable()
 export class OrdersService {
   constructor(private prisma: PrismaService) {}
@@ -40,19 +72,35 @@ async placeOrder(dto: CreateOrderDto, userId: number) {
   const {
     addressId,
     couponId,
-    items,
     subtotal,
     shippingFee,
     gst,
     totalAmount,
     note,
-  } = dto;
+    paymentMethod,
+  } = dto as any;
 
-  //  Validate user exists
+  // Normalize & validate items (survives ValidationPipe + form-data cases)
+  const itemsArr: IncomingOrderItem[] = normalizeItems((dto as any).items);
+  if (!itemsArr.length) {
+    throw new BadRequestException('Items must be a non-empty array');
+  }
+  for (const [idx, it] of itemsArr.entries()) {
+    if (
+      !it ||
+      typeof it.productId !== 'number' ||
+      typeof it.quantity !== 'number' ||
+      it.quantity <= 0
+    ) {
+      throw new BadRequestException(`Invalid item at index ${idx}`);
+    }
+  }
+
+  // Validate user
   const user = await this.prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new NotFoundException('User not found');
 
-  //  Validate address exists and belongs to user
+  // Validate address belongs to user
   const address = await this.prisma.address.findFirst({
     where: { id: addressId, userId },
   });
@@ -60,7 +108,7 @@ async placeOrder(dto: CreateOrderDto, userId: number) {
     throw new BadRequestException('Address not found or unauthorized');
   }
 
-  //  Validate coupon (if provided)
+  // Validate coupon (optional)
   if (couponId) {
     const coupon = await this.prisma.coupon.findUnique({
       where: { id: couponId },
@@ -70,8 +118,8 @@ async placeOrder(dto: CreateOrderDto, userId: number) {
     }
   }
 
-  //  Validate each product and (optional) variant
-  for (const item of items) {
+  // Validate products/variants
+  for (const item of itemsArr) {
     const product = await this.prisma.product.findUnique({
       where: { id: item.productId },
     });
@@ -79,22 +127,27 @@ async placeOrder(dto: CreateOrderDto, userId: number) {
       throw new BadRequestException(`Product ID ${item.productId} not found`);
     }
 
-    if (item.variantId !== undefined && item.variantId !== null) {
+    if (item.variantId != null) {
       const variant = await this.prisma.variant.findUnique({
         where: { id: item.variantId },
       });
       if (!variant) {
         throw new BadRequestException(`Variant ID ${item.variantId} not found`);
       }
+      if (variant.productId !== item.productId) {
+        throw new BadRequestException(
+          `Variant ${item.variantId} does not belong to product ${item.productId}`
+        );
+      }
     }
   }
 
-  //  Create the order
+  // Create order
   const order = await this.prisma.order.create({
     data: {
       user: { connect: { id: userId } },
       address: { connect: { id: addressId } },
-      paymentMethod: 'COD',
+      paymentMethod: paymentMethod ?? 'COD',
       coupon: couponId ? { connect: { id: couponId } } : undefined,
       subtotal,
       shippingFee,
@@ -102,17 +155,17 @@ async placeOrder(dto: CreateOrderDto, userId: number) {
       totalAmount,
       note,
       items: {
-        create: items.map((item) => ({
+        create: itemsArr.map((item) => ({
           productId: item.productId,
           variantId: item.variantId ?? null,
           quantity: item.quantity,
-          price: item.price,
-          total: item.total,
+          price: item.price, // per-unit
+          total: item.total, // line total before fees
         })),
       },
       payment: {
         create: {
-          method: 'COD',
+          method: paymentMethod ?? 'COD',
           status: 'PENDING',
         },
       },
@@ -125,6 +178,7 @@ async placeOrder(dto: CreateOrderDto, userId: number) {
 
   return order;
 }
+
 
 
  async listOrdersDetails(userId: number) {
