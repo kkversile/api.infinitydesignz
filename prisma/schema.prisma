@@ -234,9 +234,8 @@ model SliderRight {
 model MainCategoryPromotion {
   id            Int      @id @default(autoincrement())
   title         String
-  position      String
   display_count Int
-  display_rows  Int
+  priority      Int
   image_url     String
   status        Boolean  @default(true)
   created_at    DateTime @default(now())
