@@ -3,4 +3,5 @@ export const PRODUCT_IMAGE_PATH = '/uploads/products/';
 export const SLIDER_RIGHT_IMAGE_PATH = '/uploads/slider-right/';
 export const SLIDERS_IMAGE_PATH = '/uploads/sliders/';
 export const MAIN_CATEGORY_PROMOTION_IMAGE_PATH = '/uploads/category_promotions/';
+export const MAIN_PRODUCT_PROMOTION_IMAGE_PATH = '/uploads/main-product-promotions/';
 

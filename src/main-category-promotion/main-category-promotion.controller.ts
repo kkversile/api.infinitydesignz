@@ -1,4 +1,3 @@
-
 import {
   Controller, Get, Post, Patch, Delete, Param, Body,
   UseInterceptors, UploadedFile, ParseIntPipe, UseGuards
@@ -6,10 +5,12 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+
 import { MainCategoryPromotionService } from './main-category-promotion.service';
 import { CreateMainCategoryPromotionDto } from './dto/create-main-category-promotion.dto';
 import { UpdateMainCategoryPromotionDto } from './dto/update-main-category-promotion.dto';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { MAIN_CATEGORY_PROMOTION_IMAGE_PATH } from '../config/constants';
 
 @UseGuards(JwtAuthGuard)
 @Controller('home-category-promotions')
@@ -24,23 +25,24 @@ export class MainCategoryPromotionController {
   @Post()
   @UseInterceptors(FileInterceptor('image', {
     storage: diskStorage({
-      destination: './uploads/category_promotions',
+      destination: `.${MAIN_CATEGORY_PROMOTION_IMAGE_PATH}`, // ./uploads/category_promotions/
       filename: (_req, file, cb) => {
         const name = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
         cb(null, name + extname(file.originalname));
       },
     }),
   }))
-  async create(@Body() dto: CreateMainCategoryPromotionDto, @UploadedFile() file: Express.Multer.File) {
-  console.log(dto);
-  
-    return this.service.create({ ...dto, image_url: file.filename });
+  async create(
+    @Body() dto: CreateMainCategoryPromotionDto,
+    @UploadedFile() file: Express.Multer.File
+  ) {
+    return this.service.create({ ...dto, imageUrl: file.filename });
   }
 
   @Patch(':id')
   @UseInterceptors(FileInterceptor('image', {
     storage: diskStorage({
-      destination: './uploads/category_promotions',
+      destination: `.${MAIN_CATEGORY_PROMOTION_IMAGE_PATH}`,
       filename: (_req, file, cb) => {
         const name = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
         cb(null, name + extname(file.originalname));
@@ -54,7 +56,7 @@ export class MainCategoryPromotionController {
   ) {
     return this.service.update(id, {
       ...dto,
-      ...(file ? { image_url: file.filename } : {}),
+      ...(file ? { imageUrl: file.filename } : {}),
     });
   }
 

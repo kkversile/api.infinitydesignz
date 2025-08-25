@@ -46,6 +46,9 @@ model Brand {
   created_at DateTime @default(now())
 
   products Product[]
+  
+    // Back-relation for MainProductPromotion
+  mainProductPromotions MainProductPromotion[] @relation("MPP_Brand")
 
   @@map("brands")
 }
@@ -230,16 +233,58 @@ model SliderRight {
   @@map("slider_right")
 }
 
+// ─── MAIN CATEGORY PROMOTIONS (camelCase fields, mapped to snake_case) ───
 model MainCategoryPromotion {
-  id            Int      @id @default(autoincrement())
-  title         String
-  display_count Int
-  priority      Int
-  image_url     String
-  status        Boolean  @default(true)
-  created_at    DateTime @default(now())
+  id              Int      @id @default(autoincrement())
+  title           String
+  displayCount    Int     
+  priority        Int
+  imageUrl        String   
+  status          Boolean  @default(true)
+  createdAt       DateTime @default(now()) 
+
+  // Back-reference
+  mainProductPromotions MainProductPromotion[]
 
   @@map("main_category_promotions")
+}
+// ─── MAIN PRODUCT PROMOTIONS (updated) ─────────────────────────────────────
+model MainProductPromotion {
+  id               Int       @id @default(autoincrement())
+  title            String
+  priority         Int       @default(0)
+
+  // CHANGED: replace string "displayPosition" with an FK
+  mainCategoryPromotionId Int
+  mainCategoryPromotion   MainCategoryPromotion @relation(fields: [mainCategoryPromotionId], references: [id])
+
+  imageUrl         String
+
+  // Targeting (align with Product: categoryId = List Sub Menu)
+  categoryId       Int
+  brandId          Int?
+  seller           String?
+  minPrice         Float?
+  maxPrice         Float?
+  offerPercentFrom Float?
+  offerPercentTo   Float?
+
+  // SEO
+  seoTitle         String?
+  seoDescription   String?
+  seoKeywords      String?
+
+  // Lifecycle
+  status           Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  // Relations
+  category         Category  @relation("MPP_Category", fields: [categoryId], references: [id])
+  brand            Brand?    @relation("MPP_Brand",    fields: [brandId],    references: [id])
+
+  @@index([mainCategoryPromotionId])
+  @@map("main_product_promotions")
 }
 
 model AssemblyType {
@@ -274,6 +319,9 @@ model Category {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // Back-relation for MainProductPromotion (single categoryId like Product)
+  mainProductPromotions MainProductPromotion[] @relation("MPP_Category")
 
   @@map("categories")
 }

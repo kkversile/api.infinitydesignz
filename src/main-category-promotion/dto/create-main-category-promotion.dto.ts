@@ -1,5 +1,5 @@
-import { IsBoolean, IsInt, IsString } from 'class-validator';
-import { Transform, Type } from 'class-transformer';
+import { IsBoolean, IsInt, IsOptional, IsString } from 'class-validator';
+import { Type, Transform } from 'class-transformer';
 
 export class CreateMainCategoryPromotionDto {
   @IsString()
@@ -7,17 +7,19 @@ export class CreateMainCategoryPromotionDto {
 
   @Type(() => Number)
   @IsInt()
-  priority: number;
+  @IsOptional()
+  displayCount?: number;
 
   @Type(() => Number)
   @IsInt()
-  display_count: number;
+  @IsOptional()
+  priority?: number;
 
   @Transform(({ value }) =>
-    typeof value === 'boolean'
-      ? value
-      : value === 'true' || value === '1' || value === 1
+    value === 'true' || value === true ? true :
+    value === 'false' || value === false ? false : value
   )
   @IsBoolean()
-  status: boolean;
+  @IsOptional()
+  status?: boolean;
 }
