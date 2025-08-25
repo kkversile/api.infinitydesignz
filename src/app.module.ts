@@ -39,6 +39,8 @@ import { BuyNowModule } from './buy-now/buy-now.module';
 import { ContactsModule } from './contacts/contacts.module';
 import { UserSubscribeModule } from './user-subscribe/user-subscribe.module';
 import {FiltersModule} from './filters/filters.module';
+import { KeywordsModule } from './keywords/keywords.module';
+
 @Module({
   imports: [      
 
@@ -71,7 +73,8 @@ import {FiltersModule} from './filters/filters.module';
     BuyNowModule,
     UserSubscribeModule,
     ContactsModule,
-    FiltersModule
+    FiltersModule,
+    KeywordsModule
   ],
 })
 export class AppModule {}
