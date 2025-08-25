@@ -685,7 +685,6 @@ model Contact {
   mobile      String?  @db.VarChar(20)
   subject     String?  @db.VarChar(255)
   description String?  @db.Text
-  status      Boolean  @default(true)
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
 

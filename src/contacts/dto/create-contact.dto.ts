@@ -23,7 +23,5 @@ export class CreateContactDto {
   @IsString()
   description?: string;
 
-  @IsOptional()
-  @IsBoolean()
-  status?: boolean;
+
 }

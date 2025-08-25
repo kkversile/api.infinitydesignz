@@ -15,8 +15,7 @@ export class ContactsService {
         email: dto.email,
         mobile: dto.mobile,
         subject: dto.subject,
-        description: dto.description,
-        status: dto.status ?? true,
+        description: dto.description,        
       },
     });
   }
@@ -81,19 +80,12 @@ export class ContactsService {
         mobile: dto.mobile,
         subject: dto.subject,
         description: dto.description,
-        status: dto.status,
+       
       },
     });
   }
 
-  /** Set status (Active/Inactive) */
-  async setStatus(id: number, status: boolean) {
-    await this.ensureExists(id);
-    return this.prisma.contact.update({
-      where: { id },
-      data: { status },
-    });
-  }
+  
 
   /** Delete a contact (hard delete) */
   async remove(id: number) {

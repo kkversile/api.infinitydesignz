@@ -60,14 +60,6 @@ export class ContactsController {
     return this.contactsService.update(id, dto);
   }
 
-  // SET STATUS (for Active/Inactive toggle)
-  @Patch(':id/status')
-  setStatus(
-    @Param('id', ParseIntPipe) id: number,
-    @Body('status') status: boolean,
-  ) {
-    return this.contactsService.setStatus(id, status);
-  }
 
   // DELETE
   @Delete(':id')
