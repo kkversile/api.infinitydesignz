@@ -14,6 +14,9 @@ export class CommonStatusService {
     'brands': 'brand',
     'products': 'product',
     'sliders': 'slider',
+    'category-promotions': 'mainCategoryPromotion',
+    'product-promotions': 'mainProductPromotion',
+    'admin-users': 'user',
     // add more here if needed
   };
 
