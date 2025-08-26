@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -113,60 +113,59 @@ export class UsersService {
   }
 
   //  Update user (generic, for internal usage)
-async updateUser(userId: number, dto: Partial<UpdateUserDto>) {
-  const data: Prisma.UserUpdateInput = {};
+  async updateUser(userId: number, dto: Partial<UpdateUserDto>) {
+    const data: Prisma.UserUpdateInput = {};
 
-  // Basic text fields
-  if (dto.name !== undefined) data.name = dto.name;
-  if (dto.email !== undefined) data.email = dto.email;
+    // Basic text fields
+    if (dto.name !== undefined) data.name = dto.name;
+    if (dto.email !== undefined) data.email = dto.email;
 
-  // Phones — accept both 'phone' and alias 'mobile'
-  if (dto.phone !== undefined) (data as any).phone = dto.phone;
-  if (dto.mobile !== undefined) (data as any).phone = dto.mobile;
-  if (dto.alternateMobile !== undefined) (data as any).alternateMobile = dto.alternateMobile;
+    // Phones — accept both 'phone' and alias 'mobile'
+    if (dto.phone !== undefined) (data as any).phone = dto.phone;
+    if (dto.mobile !== undefined) (data as any).phone = dto.mobile;
+    if (dto.alternateMobile !== undefined) (data as any).alternateMobile = dto.alternateMobile;
 
-  // Enums / misc
-  if (dto.gender !== undefined) (data as any).gender = dto.gender as any;
-  if (dto.role !== undefined) (data as any).role = dto.role;
-  if (dto.status !== undefined) (data as any).status = dto.status;
-  if (dto.profilePicture !== undefined) (data as any).profilePicture = dto.profilePicture;
+    // Enums / misc
+    if (dto.gender !== undefined) (data as any).gender = dto.gender as any;
+    if (dto.role !== undefined) (data as any).role = dto.role;
+    if (dto.status !== undefined) (data as any).status = dto.status;
+    if (dto.profilePicture !== undefined) (data as any).profilePicture = dto.profilePicture;
 
-  // Dates
-  if (dto.dateOfBirth !== undefined) {
-    (data as any).dateOfBirth = (function parseDob(input?: string): Date | undefined {
-      if (!input) return undefined;
+    // Dates
+    if (dto.dateOfBirth !== undefined) {
+      (data as any).dateOfBirth = (function parseDob(input?: string): Date | undefined {
+        if (!input) return undefined;
 
-      // ISO first
-      const direct = new Date(input);
-      if (!isNaN(direct.getTime())) return direct;
+        // ISO first
+        const direct = new Date(input);
+        if (!isNaN(direct.getTime())) return direct;
 
-      // dd/MM/yyyy
-      const m = input.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-      if (m) {
-        const [, dd, mm, yyyy] = m;
-        const d = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
-        if (!isNaN(d.getTime())) return d;
-      }
-      throw new BadRequestException('Invalid dateOfBirth format. Use YYYY-MM-DD or dd/MM/yyyy.');
-    })(dto.dateOfBirth)!;
+        // dd/MM/yyyy
+        const m = input.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        if (m) {
+          const [, dd, mm, yyyy] = m;
+          const d = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+          if (!isNaN(d.getTime())) return d;
+        }
+        throw new BadRequestException('Invalid dateOfBirth format. Use YYYY-MM-DD or dd/MM/yyyy.');
+      })(dto.dateOfBirth)!;
+    }
+
+    // Token (optional but allowed)
+    if (dto.token !== undefined) (data as any).token = dto.token;
+
+    // Defensive: if whitelist removed everything or keys are wrong, fail early
+    if (Object.keys(data).length === 0) {
+      throw new BadRequestException(
+        'No valid fields to update. Ensure keys match UpdateUserDto and Content-Type is application/json.',
+      );
+    }
+
+    return this.prisma.user.update({
+      where: { id: userId },
+      data,
+    });
   }
-
-  // Token (optional but allowed)
-  if (dto.token !== undefined) (data as any).token = dto.token;
-
-  // Defensive: if whitelist removed everything or keys are wrong, fail early
-  if (Object.keys(data).length === 0) {
-    throw new BadRequestException(
-      'No valid fields to update. Ensure keys match UpdateUserDto and Content-Type is application/json.',
-    );
-  }
-
-  return this.prisma.user.update({
-    where: { id: userId },
-    data,
-  });
-}
-
 
   //  Change password
   async changePassword(userId: number, dto: ChangePasswordDto) {
@@ -188,4 +187,58 @@ async updateUser(userId: number, dto: Partial<UpdateUserDto>) {
       data: { profilePicture: filename },
     });
   }
+
+  /**
+ * Hard delete a user:
+ * - 404 if user not found
+ * - 409 if user has orders (preserve history)
+ * - Returns counts of purged related rows for messaging
+ */
+async hardDeleteById(id: number): Promise<{
+  wishlist: number;
+  cartItems: number;
+  buyNowItems: number;
+  appliedCoupons: number;
+  addresses: number;
+}> {
+  // 1) Ensure user exists
+  const user = await this.prisma.user.findUnique({ where: { id }, select: { id: true } });
+  if (!user) throw new NotFoundException('User not found');
+
+  // 2) Guard: do NOT allow deletion if user has orders
+  const orderCount = await this.prisma.order.count({ where: { userId: id } });
+  if (orderCount > 0) {
+    throw new ConflictException('Cannot delete user: order history exists. Consider soft delete instead.');
+  }
+
+  // 3) Purge dependents in a transaction, then delete user and return counts
+  try {
+    const counts = await this.prisma.$transaction(async (tx) => {
+      const w = await tx.wishlist.deleteMany({ where: { userId: id } });
+      const c = await tx.cartItem.deleteMany({ where: { userId: id } });
+      const b = await tx.buyNowItem.deleteMany({ where: { userId: id } });
+      const a = await tx.appliedCoupon.deleteMany({ where: { userId: id, orderId: null } });
+      const d = await tx.address.deleteMany({ where: { userId: id } });
+
+      await tx.user.delete({ where: { id } });
+
+      return {
+        wishlist: w.count,
+        cartItems: c.count,
+        buyNowItems: b.count,
+        appliedCoupons: a.count,
+        addresses: d.count,
+      };
+    });
+
+    return counts;
+  } catch (e: any) {
+    if (e?.code === 'P2003') {
+      throw new ConflictException(
+        'Cannot delete user due to existing references. Check related rows (addresses, wishlist, cart, coupons, etc.).'
+      );
+    }
+    throw e;
+  }
+}
 }
