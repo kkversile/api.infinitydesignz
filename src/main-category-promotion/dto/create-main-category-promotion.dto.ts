@@ -22,4 +22,12 @@ export class CreateMainCategoryPromotionDto {
   @IsBoolean()
   @IsOptional()
   status?: boolean;
+
+   @Transform(({ value }) =>
+    value === 'true' || value === true ? true :
+    value === 'false' || value === false ? false : value
+  )
+   @IsOptional()
+  @IsBoolean()
+  showTitle?: boolean = true; // ✅ default true
 }

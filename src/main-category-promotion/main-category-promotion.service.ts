@@ -36,10 +36,14 @@ export class MainCategoryPromotionService {
       displayCount: toInt(it.displayCount),
       priority: toInt(it.priority),
       status: Boolean(it.status),
+      // ✅ ensure showTitle is present and defaults to true if missing
+      showTitle: toBool((it as any).showTitle, true),
     }));
   }
 
-  async create(data: CreateMainCategoryPromotionDto & { imageUrl: string | null }) {
+  async create(
+    data: CreateMainCategoryPromotionDto & { imageUrl: string | null }
+  ) {
     try {
       if (!data.title || `${data.title}`.trim() === '') {
         throw new BadRequestException('Title is required.');
@@ -52,21 +56,35 @@ export class MainCategoryPromotionService {
           displayCount: toInt((data as any).displayCount, 0),
           priority: toInt((data as any).priority, 0),
           status: toBool((data as any).status, false),
+          // ✅ default true unless explicitly provided
+          showTitle: toBool((data as any).showTitle, true),
         },
       });
 
       return {
         message: 'Home Category Promotion created successfully.',
-        data: { ...created, imageUrl: formatImageUrl(created.imageUrl) },
+        data: {
+          ...created,
+          imageUrl: formatImageUrl(created.imageUrl),
+          // ensure showTitle is boolean in response
+          showTitle: toBool((created as any).showTitle, true),
+        },
       };
     } catch (error: any) {
-      throw new BadRequestException(`Failed to create Home Category Promotion: ${error.message}`);
+      throw new BadRequestException(
+        `Failed to create Home Category Promotion: ${error.message}`
+      );
     }
   }
 
-  async update(id: number, data: UpdateMainCategoryPromotionDto & { imageUrl?: string | null }) {
+  async update(
+    id: number,
+    data: UpdateMainCategoryPromotionDto & { imageUrl?: string | null }
+  ) {
     try {
-      const existing = await this.prisma.mainCategoryPromotion.findUnique({ where: { id } });
+      const existing = await this.prisma.mainCategoryPromotion.findUnique({
+        where: { id },
+      });
       if (!existing) throw new NotFoundException('Promotion not found.');
 
       const updated = await this.prisma.mainCategoryPromotion.update({
@@ -74,29 +92,52 @@ export class MainCategoryPromotionService {
         data: {
           ...(data.title !== undefined && { title: `${data.title}`.trim() }),
           ...(data.imageUrl !== undefined && { imageUrl: data.imageUrl }),
-          ...(data.displayCount !== undefined && { displayCount: toInt(data.displayCount, existing.displayCount ?? 0) }),
-          ...(data.priority !== undefined && { priority: toInt(data.priority, existing.priority ?? 0) }),
-          ...(data.status !== undefined && { status: toBool(data.status, existing.status ?? false) }),
+          ...(data.displayCount !== undefined && {
+            displayCount: toInt(data.displayCount, existing.displayCount ?? 0),
+          }),
+          ...(data.priority !== undefined && {
+            priority: toInt(data.priority, existing.priority ?? 0),
+          }),
+          ...(data.status !== undefined && {
+            status: toBool(data.status, existing.status ?? false),
+          }),
+          // ✅ only update if provided; default to current or true if absent in DB
+          ...(data.showTitle !== undefined && {
+            showTitle: toBool(
+              (data as any).showTitle,
+              (existing as any).showTitle ?? true
+            ),
+          }),
         },
       });
 
       return {
         message: 'Home Category Promotion updated successfully.',
-        data: { ...updated, imageUrl: formatImageUrl(updated.imageUrl) },
+        data: {
+          ...updated,
+          imageUrl: formatImageUrl(updated.imageUrl),
+          showTitle: toBool((updated as any).showTitle, true),
+        },
       };
     } catch (error: any) {
-      throw new BadRequestException(`Failed to update Home Category Promotion: ${error.message}`);
+      throw new BadRequestException(
+        `Failed to update Home Category Promotion: ${error.message}`
+      );
     }
   }
 
   async remove(id: number) {
     try {
-      const exists = await this.prisma.mainCategoryPromotion.findUnique({ where: { id } });
+      const exists = await this.prisma.mainCategoryPromotion.findUnique({
+        where: { id },
+      });
       if (!exists) throw new NotFoundException('Promotion not found.');
       await this.prisma.mainCategoryPromotion.delete({ where: { id } });
       return { message: 'Home Category Promotion deleted successfully.' };
     } catch (error: any) {
-      throw new BadRequestException(`Failed to delete Home Category Promotion: ${error.message}`);
+      throw new BadRequestException(
+        `Failed to delete Home Category Promotion: ${error.message}`
+      );
     }
   }
 }

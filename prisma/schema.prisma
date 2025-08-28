@@ -241,6 +241,8 @@ model MainCategoryPromotion {
   priority        Int
   imageUrl        String?   
   status          Boolean  @default(true)
+  showTitle       Boolean  @default(true)   // ✅ new field
+
   createdAt       DateTime @default(now()) 
 
   // Back-reference
