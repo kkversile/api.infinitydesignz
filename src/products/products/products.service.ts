@@ -469,190 +469,225 @@ if (existingBySku) {
   }
 
   // ====== FILTERED SEARCH (robust coercion + CSV support) ======
-  async searchProducts(q: QueryProductsDto) {
-    // --- helpers (local) ---
-    const toCsvArray = (val: any): string[] => {
-      if (Array.isArray(val)) return val.map((s) => String(s).trim()).filter(Boolean);
-      if (typeof val === 'string') return val.split(',').map((s) => s.trim()).filter(Boolean);
-      return [];
+ // ====== FILTERED SEARCH (images shaped like findOne) ======
+async searchProducts(q: QueryProductsDto) {
+  // --- helpers (local) ---
+  const toCsvArray = (val: any): string[] => {
+    if (Array.isArray(val)) return val.map((s) => String(s).trim()).filter(Boolean);
+    if (typeof val === 'string') return val.split(',').map((s) => s.trim()).filter(Boolean);
+    return [];
+  };
+  const toCsvNumberArray = (val: any): number[] =>
+    toCsvArray(val).map((s) => Number(s)).filter((n) => Number.isFinite(n));
+  const toInt = (v: any): number | undefined => {
+    if (v === undefined || v === null || v === '') return undefined;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const toFloat = (v: any): number | undefined => {
+    if (v === undefined || v === null || v === '') return undefined;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : undefined;
+  };
+
+  // --- unpack & coerce ---
+  const searchStr = typeof q.searchStr === 'string' ? q.searchStr.trim() : undefined;
+
+  const brandId = toInt(q.brandId);
+  const mainCategoryId = toInt(q.mainCategoryId);
+  const subCategoryId = toInt(q.subCategoryId);
+  const listSubCatId = toInt(q.listSubCatId);
+
+  const minPrice = toFloat(q.minPrice);
+  const maxPrice = toFloat(q.maxPrice);
+
+  const page = toInt(q.page) ?? 1;
+  const pageSize = toInt(q.pageSize) ?? 20;
+  const sort = (q.sort as 'newest' | 'price_asc' | 'price_desc') ?? 'newest';
+
+  // CSV params (fallback to legacy JSON "filters" if CSV empty)
+  let colorLabels = toCsvArray((q as any).color);
+  let sizeTitles = toCsvArray((q as any).size);
+  let filterListIds = toCsvNumberArray((q as any).filterListIds);
+
+  if (!colorLabels.length && !sizeTitles.length && !filterListIds.length && q.filters) {
+    try {
+      const parsed = JSON.parse(q.filters);
+      colorLabels = Array.isArray(parsed?.color) ? parsed.color : [];
+      sizeTitles = Array.isArray(parsed?.size) ? parsed.size : [];
+      filterListIds = Array.isArray(parsed?.filterListIds)
+        ? parsed.filterListIds
+            .map((n: any) => Number(n))
+            .filter((n: number) => Number.isFinite(n))
+        : [];
+    } catch {
+      // ignore bad JSON
+    }
+  }
+
+  // --- where builder ---
+  const where: any = { status: true };
+
+  if (brandId !== undefined) where.brandId = brandId;
+
+  // category hierarchy via relation filter
+  if (listSubCatId !== undefined) {
+    where.categoryId = listSubCatId;
+  } else if (subCategoryId !== undefined) {
+    where.category = { is: { parentId: subCategoryId } };
+  } else if (mainCategoryId !== undefined) {
+    where.category = { is: { parent: { is: { parentId: mainCategoryId } } } };
+  }
+
+  if (searchStr) {
+    // MySQL collation is usually case-insensitive
+    where.OR = [
+      { title: { contains: searchStr } },
+      { description: { contains: searchStr } },
+      { sku: { contains: searchStr } },
+    ];
+  }
+
+  // --- PRICE FILTER (product OR any variant must be within band) ---
+  let priceRange: any | undefined;
+  if (minPrice !== undefined || maxPrice !== undefined) {
+    priceRange = {};
+    if (minPrice !== undefined) priceRange.gte = minPrice;
+    if (maxPrice !== undefined) priceRange.lte = maxPrice;
+
+    (where.AND ??= []).push({
+      OR: [
+        { sellingPrice: priceRange },                         // product-level price in band
+        { variants: { some: { sellingPrice: priceRange } } }, // OR any variant in band
+      ],
+    });
+  }
+
+  // map color labels -> ids
+  if (colorLabels.length > 0) {
+    const colorIds = await this.prisma.color.findMany({
+      where: { label: { in: colorLabels } },
+      select: { id: true },
+    });
+    const ids = colorIds.map((c) => c.id);
+    if (ids.length > 0) (where.AND ??= []).push({ colorId: { in: ids } });
+  }
+
+  // map size titles -> ids
+  if (sizeTitles.length > 0) {
+    const sizeIds = await this.prisma.sizeUOM.findMany({
+      where: { title: { in: sizeTitles } },
+      select: { id: true },
+    });
+    const ids = sizeIds.map((s) => s.id);
+    if (ids.length > 0) (where.AND ??= []).push({ sizeId: { in: ids } });
+  }
+
+  // ProductFilter ANY semantics (has any of these filterListIds)
+  if (filterListIds.length > 0) {
+    where.filters = { some: { filterListId: { in: filterListIds } } };
+  }
+
+  // --- sorting & pagination ---
+  const take = Math.min(Math.max(pageSize, 1), 100);
+  const skip = (Math.max(page, 1) - 1) * take;
+
+  let orderBy: any;
+  switch (sort) {
+    case 'price_asc': orderBy = { sellingPrice: 'asc' }; break;
+    case 'price_desc': orderBy = { sellingPrice: 'desc' }; break;
+    case 'newest':
+    default: orderBy = { createdAt: 'desc' };
+  }
+
+  // --- include: filter variants to the same price band so <min never appears ---
+  let variantsInclude: any = { include: { size: true, color: true } };
+  if (priceRange) {
+    variantsInclude = {
+      where: { sellingPrice: priceRange }, // ONLY variants in the price band
+      include: { size: true, color: true },
     };
-    const toCsvNumberArray = (val: any): number[] =>
-      toCsvArray(val).map((s) => Number(s)).filter((n) => Number.isFinite(n));
-    const toInt = (v: any): number | undefined => {
-      if (v === undefined || v === null || v === '') return undefined;
-      const n = Number(v);
-      return Number.isFinite(n) ? n : undefined;
-    };
-    const toFloat = (v: any): number | undefined => {
-      if (v === undefined || v === null || v === '') return undefined;
-      const n = Number(v);
-      return Number.isFinite(n) ? n : undefined;
-    };
+  }
 
-    // --- unpack & coerce ---
-    const searchStr = typeof q.searchStr === 'string' ? q.searchStr.trim() : undefined;
+  // --- query ---
+  const [itemsRaw, total] = await this.prisma.$transaction([
+    this.prisma.product.findMany({
+      where,
+      include: {
+        brand: true,
+        category: { include: { parent: { include: { parent: true } } } },
+        variants: variantsInclude,   // ← filtered variants
+        images: true,                // ← we will reshape to match findOne
+        filters: true,
+        features: true,
+      },
+      skip,
+      take,
+      orderBy,
+    }),
+    this.prisma.product.count({ where }),
+  ]);
 
-    const brandId = toInt(q.brandId);
-    const mainCategoryId = toInt(q.mainCategoryId);
-    const subCategoryId = toInt(q.subCategoryId);
-    const listSubCatId = toInt(q.listSubCatId);
+  // --- compute a safe displayPrice (from in-band values only) ---
+  const bandMin = minPrice ?? -Infinity;
+  const bandMax = maxPrice ?? Infinity;
 
-    const minPrice = toFloat(q.minPrice);
-    const maxPrice = toFloat(q.maxPrice);
+  // --- reshape each product to match findOne's images structure ---
+  const items = itemsRaw.map((p) => {
+    const category = p.category;
+    const parent = category?.parent;
+    const grandparent = parent?.parent;
 
-    const page = toInt(q.page) ?? 1;
-    const pageSize = toInt(q.pageSize) ?? 20;
-    const sort = (q.sort as 'newest' | 'price_asc' | 'price_desc') ?? 'newest';
+    // product-level images (variantId === null)
+    const productImages = p.images.filter((img: any) => img.variantId === null);
+    const mainProductImage = productImages.find((img: any) => img.isMain) || null;
+    const additionalProductImages = productImages.filter((img: any) => !img.isMain);
 
-    // CSV params (fallback to legacy JSON "filters" if CSV empty)
-    let colorLabels = toCsvArray((q as any).color);
-    let sizeTitles = toCsvArray((q as any).size);
-    let filterListIds = toCsvNumberArray((q as any).filterListIds);
-
-    if (!colorLabels.length && !sizeTitles.length && !filterListIds.length && q.filters) {
-      try {
-        const parsed = JSON.parse(q.filters);
-        colorLabels = Array.isArray(parsed?.color) ? parsed.color : [];
-        sizeTitles = Array.isArray(parsed?.size) ? parsed.size : [];
-        filterListIds = Array.isArray(parsed?.filterListIds)
-          ? parsed.filterListIds
-              .map((n: any) => Number(n))
-              .filter((n: number) => Number.isFinite(n))
-          : [];
-      } catch {
-        // ignore bad JSON
-      }
-    }
-
-    // --- where builder ---
-    const where: any = { status: true };
-
-    if (brandId !== undefined) where.brandId = brandId;
-
-    // category hierarchy via relation filter
-    if (listSubCatId !== undefined) {
-      where.categoryId = listSubCatId;
-    } else if (subCategoryId !== undefined) {
-      where.category = { is: { parentId: subCategoryId } };
-    } else if (mainCategoryId !== undefined) {
-      where.category = { is: { parent: { is: { parentId: mainCategoryId } } } };
-    }
-
-    if (searchStr) {
-      // MySQL usually case-insensitive by collation; remove mode if unsupported.
-      where.OR = [
-        { title: { contains: searchStr } },
-        { description: { contains: searchStr } },
-        { sku: { contains: searchStr } },
-      ];
-    }
-
-    // --- PRICE FILTER (product OR any variant must be within band) ---
-    let priceRange: any | undefined;
-    if (minPrice !== undefined || maxPrice !== undefined) {
-      priceRange = {};
-      if (minPrice !== undefined) priceRange.gte = minPrice;
-      if (maxPrice !== undefined) priceRange.lte = maxPrice;
-
-      (where.AND ??= []).push({
-        OR: [
-          { sellingPrice: priceRange },                         // product-level price in band
-          { variants: { some: { sellingPrice: priceRange } } }, // OR any variant in band
-        ],
-      });
-    }
-
-    // map color labels -> ids
-    if (colorLabels.length > 0) {
-      const colorIds = await this.prisma.color.findMany({
-        where: { label: { in: colorLabels } },
-        select: { id: true },
-      });
-      const ids = colorIds.map((c) => c.id);
-      if (ids.length > 0) {
-        (where.AND ??= []).push({ colorId: { in: ids } });
-      }
-    }
-
-    // map size titles -> ids
-    if (sizeTitles.length > 0) {
-      const sizeIds = await this.prisma.sizeUOM.findMany({
-        where: { title: { in: sizeTitles } },
-        select: { id: true },
-      });
-      const ids = sizeIds.map((s) => s.id);
-      if (ids.length > 0) {
-        (where.AND ??= []).push({ sizeId: { in: ids } });
-      }
-    }
-
-    // ProductFilter ANY semantics (has any of these filterListIds)
-    if (filterListIds.length > 0) {
-      where.filters = { some: { filterListId: { in: filterListIds } } };
-    }
-
-    // --- sorting & pagination ---
-    const take = Math.min(Math.max(pageSize, 1), 100);
-    const skip = (Math.max(page, 1) - 1) * take;
-
-    let orderBy: any;
-    switch (sort) {
-      case 'price_asc': orderBy = { sellingPrice: 'asc' }; break;
-      case 'price_desc': orderBy = { sellingPrice: 'desc' }; break;
-      case 'newest':
-      default: orderBy = { createdAt: 'desc' };
-    }
-
-    // --- include: filter variants to the same price band so <min never appears ---
-    let variantsInclude: any = { include: { size: true, color: true } };
-    if (priceRange) {
-      variantsInclude = {
-        where: { sellingPrice: priceRange }, // ONLY variants in the price band
-        include: { size: true, color: true },
+    // per-variant images map
+    const variantImagesMap: Record<number, { main: any | null; additional: any[] }> = {};
+    for (const v of p.variants) {
+      const imgs = p.images.filter((img: any) => img.variantId === v.id);
+      variantImagesMap[v.id] = {
+        main: imgs.find((img: any) => img.isMain) || null,
+        additional: imgs.filter((img: any) => !img.isMain),
       };
     }
 
-    // --- query ---
-    const [itemsRaw, total] = await this.prisma.$transaction([
-      this.prisma.product.findMany({
-        where,
-        include: {
-          brand: true,
-          category: { include: { parent: { include: { parent: true } } } },
-          variants: variantsInclude,   // ← filtered variants
-          images: true,
-          filters: true,
-          features: true,
-          // (optional) include promotions in lists if you need them here too:
-          // mainCategoryPromotions: {
-          //   include: { mainCategoryPromotion: { select: { id: true, title: true } } },
-          // },
-        },
-        skip,
-        take,
-        orderBy,
-      }),
-      this.prisma.product.count({ where }),
-    ]);
-
-    // --- compute a safe displayPrice (from in-band values only) ---
-    const bandMin = minPrice ?? -Infinity;
-    const bandMax = maxPrice ?? Infinity;
-
-    const items = itemsRaw.map((p) => {
-      const productInBand =
-        p.sellingPrice >= bandMin && p.sellingPrice <= bandMax ? p.sellingPrice : Infinity;
-      const minVariant =
-        p.variants.length ? Math.min(...p.variants.map((v) => v.sellingPrice)) : Infinity;
-      const displayPrice = Math.min(productInBand, minVariant);
-      return { ...p, displayPrice: isFinite(displayPrice) ? displayPrice : undefined };
-    });
+    // displayPrice using only in-band values (product or filtered variants)
+    const productInBand =
+      p.sellingPrice >= bandMin && p.sellingPrice <= bandMax ? p.sellingPrice : Infinity;
+    const minVariant =
+      p.variants.length ? Math.min(...p.variants.map((v: any) => v.sellingPrice)) : Infinity;
+    const displayPrice = Math.min(productInBand, minVariant);
+    const safeDisplayPrice = Number.isFinite(displayPrice) ? displayPrice : undefined;
 
     return {
-      meta: { page, pageSize: take, total, totalPages: Math.ceil(total / take), sort },
-      items,
+      ...p,
+      // Flattened category context (like your findAll/findOne helpers)
+      mainCategoryTitle: grandparent?.title || null,
+      mainCategoryId: grandparent?.id || null,
+      subCategoryTitle: parent?.title || null,
+      subCategoryId: parent?.id || null,
+      listSubCategoryTitle: category?.title || null,
+      listSubCategoryId: category?.id || null,
+
+      // images shaped exactly like findOne:
+      images: {
+        main: mainProductImage,
+        additional: additionalProductImages,
+        variants: variantImagesMap,
+      },
+
+      // helpful for cards/UI
+      displayPrice: safeDisplayPrice,
     };
-  }
+  });
+
+  return {
+    meta: { page, pageSize: take, total, totalPages: Math.ceil(total / take), sort },
+    items,
+  };
+}
 
   // ====== LEGACY FILTER (kept for backward compatibility) ======
   // NOTE: Now also filters filterListIds in DB; removed post-fetch filtering.
