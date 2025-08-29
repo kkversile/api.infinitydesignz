@@ -11,6 +11,12 @@ const formatCategoryResponse = (c: any) => ({
   appIcon:   formatImage(c.appIcon),
   webImage:  formatImage(c.webImage),
 });
+const normalizeBool = (val: any): boolean | undefined => {
+  if (val === undefined || val === null) return undefined;
+  if (typeof val === 'boolean') return val;
+  if (typeof val === 'string') return val.toLowerCase() === 'true';
+  return Boolean(val);
+};
 
 @Injectable()
 export class CategoriesService {
@@ -57,6 +63,7 @@ private async getCategoryWithChildrenRecursive(id: number): Promise<any> {
       data: {
         title: data.title,
         status,
+        showInNeedHelpBuying: normalizeBool(data.showInNeedHelpBuying) ?? false, 
         ...(parentId    != null && { parent:     { connect: { id: parentId    } } }),
         ...(featureTypeId != null && { featureType: { connect: { id: featureTypeId } } }),
         ...(filterTypeId  != null && { filterType:  { connect: { id: filterTypeId  } } }),
@@ -143,6 +150,9 @@ async findOne(id: number) {
           ? { disconnect: true }
           : { connect:    { id: Number(data.parentId) } }
       }),
+      ...(data.showInNeedHelpBuying !== undefined
+        ? { showInNeedHelpBuying: normalizeBool(data.showInNeedHelpBuying) }
+        : {}),
       ...(data.featureTypeId !== undefined && {
         featureType: { connect: { id: Number(data.featureTypeId) } }
       }),
@@ -239,5 +249,41 @@ async findOne(id: number) {
   };
 }
 
+// ✅ returns subcategories flagged for “Need Help Buying”
+async findNeedHelpBuying() {
+  const categories = await this.prisma.category.findMany({
+    where: {
+      status: true,
+      showInNeedHelpBuying: true,
+      NOT: { parentId: null },
+      
+    },
+    orderBy: [{ position: 'asc' }, { title: 'asc' }],
+    select: { id: true },
+  });
+
+  const result = [];
+  for (const cat of categories) {
+    const fullCategory = await this.getCategoryWithChildrenRecursive(cat.id);
+  if ('featureType' in fullCategory) {
+      delete fullCategory.featureType;
+    }
+    if ('filterType' in fullCategory) {
+      delete fullCategory.filterType;
+    }
+    if (fullCategory) result.push(fullCategory);
+  }
+
+  return result;
+}
+
+async toggleNeedHelpBuying(id: number, value: boolean) {
+  return this.prisma.category.update({
+    where: { id },
+    data: { showInNeedHelpBuying: !!value },
+  });
+
+  
+}
 
 }

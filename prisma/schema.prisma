@@ -326,6 +326,7 @@ model Category {
   webImage     String?
   mainImage    String?
   parentId     Int?
+  showInNeedHelpBuying Boolean @default(false)
   parent       Category?  @relation("CategoryToChildren", fields: [parentId], references: [id])
   children     Category[] @relation("CategoryToChildren")
 

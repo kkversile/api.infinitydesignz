@@ -53,7 +53,10 @@ export class CategoriesController {
   findAll() {
     return this.service.findAll();
   }
-
+  @Get('need-help-buying')
+findNeedHelpBuying() {
+  return this.service.findNeedHelpBuying();
+}
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.service.findOne(+id);
@@ -100,4 +103,15 @@ async updateStatusBulk(
   remove(@Param('id') id: string) {
     return this.service.remove(+id);
   }
+  
+@UseGuards(JwtAuthGuard)
+@Patch('need-help-buying/:id')
+toggleNeedHelpBuying(@Param('id') id: string, @Body('value') value: any) {
+  const boolVal =
+    typeof value === 'boolean' ? value :
+    typeof value === 'string' ? value === 'true' :
+    false;
+  return this.service.toggleNeedHelpBuying(+id, boolVal);
+}
+
 }
