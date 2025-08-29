@@ -46,8 +46,8 @@ model Brand {
   created_at DateTime @default(now())
 
   products Product[]
-  
-    // Back-relation for MainProductPromotion
+
+  // Back-relation for MainProductPromotion
   mainProductPromotions MainProductPromotion[] @relation("MPP_Brand")
 
   @@map("brands")
@@ -235,32 +235,34 @@ model SliderRight {
 
 // ─── MAIN CATEGORY PROMOTIONS (camelCase fields, mapped to snake_case) ───
 model MainCategoryPromotion {
-  id              Int      @id @default(autoincrement())
-  title           String
-  displayCount    Int     
-  priority        Int
-  imageUrl        String?   
-  status          Boolean  @default(true)
-  showTitle       Boolean  @default(true)   // ✅ new field
+  id           Int     @id @default(autoincrement())
+  title        String
+  displayCount Int
+  priority     Int
+  imageUrl     String?
+  status       Boolean @default(true)
+  showTitle    Boolean @default(true) // ✅ new field
 
-  createdAt       DateTime @default(now()) 
+  createdAt DateTime @default(now())
 
   // Back-reference
-  mainProductPromotions MainProductPromotion[]
+  mainProductPromotions        MainProductPromotion[]
+  ProductMainCategoryPromotion ProductMainCategoryPromotion[]
 
   @@map("main_category_promotions")
 }
+
 // ─── MAIN PRODUCT PROMOTIONS (updated) ─────────────────────────────────────
 model MainProductPromotion {
-  id               Int       @id @default(autoincrement())
-  title            String
-  priority         Int       @default(0)
+  id       Int    @id @default(autoincrement())
+  title    String
+  priority Int    @default(0)
 
   // CHANGED: replace string "displayPosition" with an FK
   mainCategoryPromotionId Int
   mainCategoryPromotion   MainCategoryPromotion @relation(fields: [mainCategoryPromotionId], references: [id])
 
-  imageUrl         String
+  imageUrl String
 
   // Targeting (align with Product: categoryId = List Sub Menu)
   categoryId       Int
@@ -272,21 +274,37 @@ model MainProductPromotion {
   offerPercentTo   Float?
 
   // SEO
-  seoTitle         String?
-  seoDescription   String?
-  seoKeywords      String?
+  seoTitle       String?
+  seoDescription String?
+  seoKeywords    String?
 
   // Lifecycle
-  status           Boolean   @default(true)
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  status    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  category         Category  @relation("MPP_Category", fields: [categoryId], references: [id])
-  brand            Brand?    @relation("MPP_Brand",    fields: [brandId],    references: [id])
+  products ProductMainCategoryPromotion[]
+
+  category Category @relation("MPP_Category", fields: [categoryId], references: [id])
+  brand    Brand?   @relation("MPP_Brand", fields: [brandId], references: [id])
 
   @@index([mainCategoryPromotionId])
   @@map("main_product_promotions")
+}
+
+model ProductMainCategoryPromotion {
+  productId               Int
+  mainCategoryPromotionId Int
+  createdAt               DateTime @default(now())
+
+  product                Product               @relation(fields: [productId], references: [id])
+  mainCategoryPromotion  MainCategoryPromotion @relation(fields: [mainCategoryPromotionId], references: [id])
+  MainProductPromotion   MainProductPromotion? @relation(fields: [mainProductPromotionId], references: [id])
+  mainProductPromotionId Int?
+
+  @@id([productId, mainCategoryPromotionId])
+  @@map("product_main_category_promotions")
 }
 
 model AssemblyType {
@@ -357,12 +375,13 @@ model Product {
   features       ProductFeature[]
   filters        ProductFilter[]
 
-  status    Boolean     @default(true)
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
-  OrderItem OrderItem[]
-  Wishlist  Wishlist[]
-  CartItem  CartItem[]
+  status                 Boolean                        @default(true)
+  createdAt              DateTime                       @default(now())
+  updatedAt              DateTime                       @updatedAt
+  OrderItem              OrderItem[]
+  Wishlist               Wishlist[]
+  CartItem               CartItem[]
+  mainCategoryPromotions ProductMainCategoryPromotion[]
 
   // NEW: back-relation to Buy Now items
   buyNowItems BuyNowItem[]
@@ -753,8 +772,8 @@ model Keyword {
   id        Int      @id @default(autoincrement())
   keyword   String   @unique @db.VarChar(255)
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt   // optional but recommended
+  updatedAt DateTime @updatedAt // optional but recommended
 
   @@index([createdAt])
-  @@map("keywords")               // keeps the existing table name
+  @@map("keywords") // keeps the existing table name
 }

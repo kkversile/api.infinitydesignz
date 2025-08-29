@@ -13,6 +13,7 @@ export class ProductsController {
 @UseGuards(JwtAuthGuard)
   @Post()
   create(@Body() dto: CreateProductsDto) {
+    console.log(dto);
     return this.productsService.create(dto);
   }
 @UseGuards(JwtAuthGuard)

@@ -1,39 +1,104 @@
-export class CreateProductsDto {
-  sku: string;
-  title: string;
-  description?: string;
-  brandId: number;
+import {
+  IsString,
+  IsOptional,
+  IsNumber,
+  IsInt,
+  IsBoolean,
+  IsArray,
+  ValidateNested,
+  Min,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 
-  //  Updated 3-level category support
-  categoryId: number;
-  
+class ProductDetailsDto {
+  @IsOptional() @IsString()
+  model?: string;
 
-  colorId?: number;
+  @IsOptional() @IsNumber()
+  weight?: number;
+
+  @IsOptional() @IsInt() @Min(0)
+  sla?: number;
+
+  @IsOptional() @IsNumber()
+  deliveryCharges?: number;
+}
+
+class VariantDto {
+  @IsString()
+  sku!: string;
+
+  @IsInt() @Min(0)
+  stock!: number;
+
+  @IsNumber()
+  mrp!: number;
+
+  @IsNumber()
+  sellingPrice!: number;
+
+  @IsOptional() @IsInt() @Min(1)
   sizeId?: number;
-  stock: number;
-  mrp: number;
-  sellingPrice: number;
+
+  @IsOptional() @IsInt() @Min(1)
+  colorId?: number;
+}
+
+export class CreateProductsDto {
+  @IsString()
+  sku!: string;
+
+  @IsString()
+  title!: string;
+
+  @IsOptional() @IsString()
+  description?: string;
+
+  @IsOptional() @IsInt() @Min(1)
+  brandId?: number;
+
+  @IsInt() @Min(1)
+  categoryId!: number;
+
+  @IsOptional() @IsInt() @Min(1)
+  colorId?: number;
+
+  @IsOptional() @IsInt() @Min(1)
+  sizeId?: number;
+
+  @IsInt() @Min(0)
+  stock!: number;
+
+  @IsNumber()
+  mrp!: number;
+
+  @IsNumber()
+  sellingPrice!: number;
+
+  @IsOptional() @IsNumber()
   height?: number;
+
+  @IsOptional() @IsNumber()
   width?: number;
+
+  @IsOptional() @IsNumber()
   length?: number;
+
+  @IsOptional() @IsString()
   searchKeywords?: string;
+
+  @IsOptional() @IsBoolean()
   status?: boolean;
 
-  productDetails?: {
-    model?: string;
-    weight?: number;
-    sla?: number;
-    deliveryCharges?: number;
-  };
+  // ✅ NEW multi-select promotions
+  @IsOptional() @IsArray() @IsInt({ each: true })
+  mainCategoryPromotionIds?: number[];
 
-  variants?: {
-    sku: string;
-    stock: number;
-    mrp: number;
-    sellingPrice: number;
-    sizeId?: number;
-    colorId?: number;
-  }[];
+  @IsOptional() @ValidateNested() @Type(() => ProductDetailsDto)
+  productDetails?: ProductDetailsDto;
+
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => VariantDto)
+  variants?: VariantDto[];
 }
 
 export class UpdateProductsDto extends CreateProductsDto {}

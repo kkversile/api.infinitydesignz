@@ -31,6 +31,15 @@ export class ProductsService {
       variants = [],
     } = dto;
 
+    if (!sku || !String(sku).trim()) {
+  throw new BadRequestException("SKU is required.");
+}
+const existingBySku = await this.prisma.product.findUnique({
+  where: { sku: String(sku).trim() },
+});
+if (existingBySku) {
+  throw new BadRequestException(`Product with SKU '${sku}' already exists.`);
+}
     // unique SKU check
     if (await this.prisma.product.findUnique({ where: { sku } })) {
       throw new BadRequestException(`Product with SKU '${sku}' already exists.`);
@@ -55,6 +64,7 @@ export class ProductsService {
     }
 
     try {
+      // create product
       const created = await this.prisma.product.create({
         data: {
           sku,
@@ -109,6 +119,18 @@ export class ProductsService {
         },
       });
 
+      // NEW: link MainCategoryPromotions (if provided)
+      const { mainCategoryPromotionIds } = dto as any;
+      if (Array.isArray(mainCategoryPromotionIds) && mainCategoryPromotionIds.length) {
+        await this.prisma.productMainCategoryPromotion.createMany({
+          data: mainCategoryPromotionIds.map((mcpId: number) => ({
+            productId: created.id,
+            mainCategoryPromotionId: Number(mcpId),
+          })),
+          skipDuplicates: true,
+        });
+      }
+
       return { message: "Product created successfully", data: created };
     } catch (err) {
       console.error(err);
@@ -136,6 +158,13 @@ export class ProductsService {
         images: true,
         filters: true,
         features: true,
+
+        // NEW: include linked promotions
+        mainCategoryPromotions: {
+          include: {
+            mainCategoryPromotion: { select: { id: true, title: true } },
+          },
+        },
       },
     });
 
@@ -157,6 +186,10 @@ export class ProductsService {
         };
       }
 
+      // NEW: flatten promotions
+      const promotions = product.mainCategoryPromotions.map((j) => j.mainCategoryPromotion);
+      const promotionIds = promotions.map((p) => p.id);
+
       return {
         ...product,
         mainCategoryTitle: grandparent?.title || null,
@@ -170,6 +203,8 @@ export class ProductsService {
           additional: additionalProductImages,
           variants: variantImagesMap,
         },
+        promotions,    // [{id,title}]
+        promotionIds,  // [1,2,3]
       };
     });
   }
@@ -194,6 +229,13 @@ export class ProductsService {
         images: true,
         filters: true,
         features: true,
+
+        // NEW: include linked promotions
+        mainCategoryPromotions: {
+          include: {
+            mainCategoryPromotion: { select: { id: true, title: true } },
+          },
+        },
       },
     });
 
@@ -216,6 +258,10 @@ export class ProductsService {
       };
     }
 
+    // NEW: flatten promotions
+    const promotions = product.mainCategoryPromotions.map((j) => j.mainCategoryPromotion);
+    const promotionIds = promotions.map((p) => p.id);
+
     return {
       ...product,
       mainCategoryTitle: grandparent?.title || null,
@@ -229,6 +275,8 @@ export class ProductsService {
         additional: additionalProductImages,
         variants: variantImagesMap,
       },
+      promotions,
+      promotionIds,
     };
   }
 
@@ -353,6 +401,23 @@ export class ProductsService {
       },
     });
 
+    // NEW: replace promotion links if provided
+    const { mainCategoryPromotionIds } = dto as any;
+    if (Array.isArray(mainCategoryPromotionIds)) {
+      await this.prisma.productMainCategoryPromotion.deleteMany({
+        where: { productId: id },
+      });
+      if (mainCategoryPromotionIds.length) {
+        await this.prisma.productMainCategoryPromotion.createMany({
+          data: mainCategoryPromotionIds.map((mcpId: number) => ({
+            productId: id,
+            mainCategoryPromotionId: Number(mcpId),
+          })),
+          skipDuplicates: true,
+        });
+      }
+    }
+
     return { message: "Product updated successfully", data: updated };
   }
 
@@ -371,6 +436,11 @@ export class ProductsService {
     if (!product) throw new NotFoundException("Product not found");
 
     const deleteOps = [];
+
+    // NEW: unlink promotions for this product
+    deleteOps.push(
+      this.prisma.productMainCategoryPromotion.deleteMany({ where: { productId: id } })
+    );
 
     const variantImageIds = await this.prisma.image.findMany({
       where: { variantId: { in: product.variants.map((v) => v.id) } },
@@ -553,6 +623,10 @@ export class ProductsService {
           images: true,
           filters: true,
           features: true,
+          // (optional) include promotions in lists if you need them here too:
+          // mainCategoryPromotions: {
+          //   include: { mainCategoryPromotion: { select: { id: true, title: true } } },
+          // },
         },
         skip,
         take,

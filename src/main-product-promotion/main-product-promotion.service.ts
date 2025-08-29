@@ -270,9 +270,26 @@ export class MainProductPromotionService {
  * - Each with Active Product Promotions (priority ASC)
  * - Optionally include a small product list per promotion
  */
-async getAllPromotionsAggregate(opts: { includeProducts?: boolean; productsLimit?: number } = {}) {
-  const includeProducts = !!opts.includeProducts;
-  const productsLimit = Math.max(1, Math.min(opts.productsLimit ?? 0, 50));
+/**
+ * Aggregated list for frontend:
+ * - Active MainCategoryPromotions (priority ASC)
+ * - Each with:
+ *    - promotions: Active MainProductPromotions (priority ASC)
+ *    - productPromotionList: Products linked to THIS category promotion (via ProductMainCategoryPromotion)
+ */
+/**
+ * Aggregated list for frontend:
+ * - Active MainCategoryPromotions (priority ASC)
+ * - Each item contains:
+ *    - promotions: active MainProductPromotions (priority ASC)
+ *    - productPromotionList (peer): products linked to THIS category promotion
+ *      with FULL product details (same include as searchProducts)
+ */
+async getAllPromotionsAggregate(
+  opts: { includeProducts?: boolean; productsLimit?: number } = {},
+) {
+  const includeProducts = opts.includeProducts ?? true;     // default include
+  const hardLimit = Math.max(1, Math.min(opts.productsLimit ?? 10, 50));
 
   const categories = await this.prisma.mainCategoryPromotion.findMany({
     where: { status: true },
@@ -308,42 +325,47 @@ async getAllPromotionsAggregate(opts: { includeProducts?: boolean; productsLimit
 
   const items = await Promise.all(
     categories.map(async (c) => {
-      const promotions = await Promise.all(
-        c.mainProductPromotions.map(async (p) => {
-          const base = {
-            ...p,
-            imageUrl: img(MAIN_PRODUCT_PROMOTION_IMAGE_PATH, p.imageUrl),
-          };
+      // Format promo image URLs
+      const promotions = c.mainProductPromotions.map((p) => ({
+        ...p,
+        imageUrl: img(MAIN_PRODUCT_PROMOTION_IMAGE_PATH, p.imageUrl),
+      }));
 
-          if (!includeProducts) return base;
+      // CATEGORY-LEVEL product list (peer of promotions) — FULL product details
+      let productPromotionList:
+        | Array<any>
+        | undefined = undefined;
 
-          const products = await this.prisma.product.findMany({
-            where: {
-              status: true,
-              ...(p.categoryId ? { categoryId: p.categoryId } : {}),
-              ...(p.brandId ? { brandId: p.brandId } : {}),
-              ...(p.minPrice != null || p.maxPrice != null
-                ? {
-                    sellingPrice: {
-                      ...(p.minPrice != null ? { gte: p.minPrice } : {}),
-                      ...(p.maxPrice != null ? { lte: p.maxPrice } : {}),
-                    },
-                  }
-                : {}),
-            },
-            orderBy: { createdAt: 'desc' }, // ✅ safe field
-            take: productsLimit || undefined,
-            select: {
-              id: true,
-              title: true,          // ✅ field exists
-              sellingPrice: true,   // ✅ field exists
-              mrp: true,            // ✅ field exists
-            },
-          });
+      if (includeProducts) {
+        // read links from the join table to be exact
+        const links = await this.prisma.productMainCategoryPromotion.findMany({
+          where: { mainCategoryPromotionId: c.id },
+          orderBy: { createdAt: 'desc' },
+          select: { productId: true },
+        });
 
-          return { ...base, products };
-        })
-      );
+        const productIds = Array.from(new Set(links.map((l) => l.productId)));
+        const take =
+          c.displayCount && c.displayCount > 0
+            ? Math.min(c.displayCount, hardLimit)
+            : hardLimit;
+
+        productPromotionList = productIds.length
+          ? await this.prisma.product.findMany({
+              where: { id: { in: productIds }, status: true },
+              orderBy: { createdAt: 'desc' },
+              take,
+              include: {
+                brand: true,
+                category: { include: { parent: { include: { parent: true } } } },
+                variants: { include: { size: true, color: true } },
+                images: true,
+                filters: true,
+                features: true,
+              },
+            })
+          : [];
+      }
 
       return {
         id: c.id,
@@ -352,11 +374,14 @@ async getAllPromotionsAggregate(opts: { includeProducts?: boolean; productsLimit
         priority: c.priority,
         imageUrl: img(MAIN_CATEGORY_PROMOTION_IMAGE_PATH, c.imageUrl),
         promotions,
+        productPromotionList, // ← full product rows (same include as searchProducts)
       };
-    })
+    }),
   );
 
   return { items };
 }
+
+
 
 }
