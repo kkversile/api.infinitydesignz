@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsIn, IsInt, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { IsIn, IsInt, IsNumber, IsOptional, IsString, Min,Max } from 'class-validator';
 
 export class QueryProductsDto {
   // search & brand
@@ -31,6 +31,16 @@ export class QueryProductsDto {
   @IsOptional() @Transform(({ value }) => parseFloat(value))
   @IsNumber()
   maxPrice?: number;
+
+    // ✅ Discount % band (inclusive)
+  // Example: less than 10% → discountPctMax=10
+  @IsOptional() @Transform(({ value }) => parseFloat(value))
+  @IsNumber() @Min(0) @Max(100)
+  discountPctMin?: number;
+
+  @IsOptional() @Transform(({ value }) => parseFloat(value))
+  @IsNumber() @Min(0) @Max(100)
+  discountPctMax?: number;
 
   // ✅ NEW: CSV params
   // e.g. color=Red,Blue  -> ['Red','Blue']

@@ -489,6 +489,11 @@ async searchProducts(q: QueryProductsDto) {
     const n = Number(v);
     return Number.isFinite(n) ? n : undefined;
   };
+  const pct = (mrp: number, sp: number): number => {
+    if (!Number.isFinite(mrp) || mrp <= 0) return 0;
+    const d = Math.max(0, mrp - sp);
+    return Math.round((d / mrp) * 100);
+  };
 
   // --- unpack & coerce ---
   const searchStr = typeof q.searchStr === 'string' ? q.searchStr.trim() : undefined;
@@ -501,36 +506,34 @@ async searchProducts(q: QueryProductsDto) {
   const minPrice = toFloat(q.minPrice);
   const maxPrice = toFloat(q.maxPrice);
 
+  const discMin = toFloat((q as any).discountPctMin);
+  const discMax = toFloat((q as any).discountPctMax);
+  const hasDiscFilter = discMin !== undefined || discMax !== undefined;
+
   const page = toInt(q.page) ?? 1;
   const pageSize = toInt(q.pageSize) ?? 20;
   const sort = (q.sort as 'newest' | 'price_asc' | 'price_desc') ?? 'newest';
 
   // CSV params (fallback to legacy JSON "filters" if CSV empty)
-  let colorLabels = toCsvArray((q as any).color);
-  let sizeTitles = toCsvArray((q as any).size);
-  let filterListIds = toCsvNumberArray((q as any).filterListIds);
+  let colorLabels = Array.isArray((q as any).color) ? (q as any).color : toCsvArray((q as any).color);
+  let sizeTitles  = Array.isArray((q as any).size)  ? (q as any).size  : toCsvArray((q as any).size);
+  let filterListIds = Array.isArray((q as any).filterListIds) ? (q as any).filterListIds : toCsvNumberArray((q as any).filterListIds);
 
   if (!colorLabels.length && !sizeTitles.length && !filterListIds.length && q.filters) {
     try {
       const parsed = JSON.parse(q.filters);
       colorLabels = Array.isArray(parsed?.color) ? parsed.color : [];
-      sizeTitles = Array.isArray(parsed?.size) ? parsed.size : [];
+      sizeTitles  = Array.isArray(parsed?.size) ? parsed.size : [];
       filterListIds = Array.isArray(parsed?.filterListIds)
-        ? parsed.filterListIds
-            .map((n: any) => Number(n))
-            .filter((n: number) => Number.isFinite(n))
+        ? parsed.filterListIds.map((n: any) => Number(n)).filter((n: number) => Number.isFinite(n))
         : [];
-    } catch {
-      // ignore bad JSON
-    }
+    } catch {/* ignore */}
   }
 
   // --- where builder ---
   const where: any = { status: true };
-
   if (brandId !== undefined) where.brandId = brandId;
 
-  // category hierarchy via relation filter
   if (listSubCatId !== undefined) {
     where.categoryId = listSubCatId;
   } else if (subCategoryId !== undefined) {
@@ -540,7 +543,6 @@ async searchProducts(q: QueryProductsDto) {
   }
 
   if (searchStr) {
-    // MySQL collation is usually case-insensitive
     where.OR = [
       { title: { contains: searchStr } },
       { description: { contains: searchStr } },
@@ -557,8 +559,8 @@ async searchProducts(q: QueryProductsDto) {
 
     (where.AND ??= []).push({
       OR: [
-        { sellingPrice: priceRange },                         // product-level price in band
-        { variants: { some: { sellingPrice: priceRange } } }, // OR any variant in band
+        { sellingPrice: priceRange },
+        { variants: { some: { sellingPrice: priceRange } } },
       ],
     });
   }
@@ -583,15 +585,12 @@ async searchProducts(q: QueryProductsDto) {
     if (ids.length > 0) (where.AND ??= []).push({ sizeId: { in: ids } });
   }
 
-  // ProductFilter ANY semantics (has any of these filterListIds)
+  // ProductFilter ANY semantics
   if (filterListIds.length > 0) {
     where.filters = { some: { filterListId: { in: filterListIds } } };
   }
 
-  // --- sorting & pagination ---
-  const take = Math.min(Math.max(pageSize, 1), 100);
-  const skip = (Math.max(page, 1) - 1) * take;
-
+  // --- sorting ---
   let orderBy: any;
   switch (sort) {
     case 'price_asc': orderBy = { sellingPrice: 'asc' }; break;
@@ -600,52 +599,95 @@ async searchProducts(q: QueryProductsDto) {
     default: orderBy = { createdAt: 'desc' };
   }
 
-  // --- include: filter variants to the same price band so <min never appears ---
+  // --- include (variants may also be price filtered) ---
   let variantsInclude: any = { include: { size: true, color: true } };
   if (priceRange) {
     variantsInclude = {
-      where: { sellingPrice: priceRange }, // ONLY variants in the price band
+      where: { sellingPrice: priceRange },
       include: { size: true, color: true },
     };
   }
 
-  // --- query ---
-  const [itemsRaw, total] = await this.prisma.$transaction([
-    this.prisma.product.findMany({
-      where,
-      include: {
-        brand: true,
-        category: { include: { parent: { include: { parent: true } } } },
-        variants: variantsInclude,   // ← filtered variants
-        images: true,                // ← we will reshape to match findOne
-        filters: true,
-        features: true,
-      },
-      skip,
-      take,
-      orderBy,
-    }),
-    this.prisma.product.count({ where }),
-  ]);
+  const baseFindArgs = {
+    where,
+    include: {
+      brand: true,
+      category: { include: { parent: { include: { parent: true } } } },
+      variants: variantsInclude,
+      images: true,
+      filters: true,
+      features: true,
+    },
+    orderBy,
+  } as const;
 
-  // --- compute a safe displayPrice (from in-band values only) ---
+  const candidates = hasDiscFilter
+    ? await this.prisma.product.findMany(baseFindArgs)
+    : await this.prisma.product.findMany({
+        ...baseFindArgs,
+        skip: (Math.max(page, 1) - 1) * Math.min(Math.max(pageSize, 1), 100),
+        take: Math.min(Math.max(pageSize, 1), 100),
+      });
+
+  const totalBase = await this.prisma.product.count({ where });
+
+  // --- bounds for price band (for displayPrice only)
   const bandMin = minPrice ?? -Infinity;
   const bandMax = maxPrice ?? Infinity;
 
-  // --- reshape each product to match findOne's images structure ---
-  const items = itemsRaw.map((p) => {
+  // discount % predicate (inclusive)
+  const inDiscBand = (mrp: number, sp: number) => {
+    const p = pct(mrp, sp);
+    if (discMin !== undefined && p < discMin) return false;
+    if (discMax !== undefined && p > discMax) return false;
+    return true;
+  };
+
+  // --- filter by discount% if requested (product OR any variant)
+  let filtered = candidates;
+  if (hasDiscFilter) {
+    filtered = candidates.filter((p: any) => {
+      if (inDiscBand(p.mrp, p.sellingPrice)) return true;
+      for (const v of p.variants as any[]) {
+        if (inDiscBand(v.mrp, v.sellingPrice)) return true;
+      }
+      return false;
+    });
+  }
+
+  // --- reshape, attach discount % to variants and choose a badge % per product
+  const reshaped = filtered.map((p: any) => {
     const category = p.category;
     const parent = category?.parent;
     const grandparent = parent?.parent;
 
-    // product-level images (variantId === null)
+    // post-filter variants by discount% too when band applied
+    const variantsInitial: any[] = hasDiscFilter
+      ? (p.variants as any[]).filter((v) => inDiscBand(v.mrp, v.sellingPrice))
+      : (p.variants as any[]);
+
+    // augment each variant with discountPercent
+    const variantsFinal = variantsInitial.map((v) => ({
+      ...v,
+      discountPercent: pct(v.mrp, v.sellingPrice),
+    }));
+
+    // compute product/variant discount percents
+    const productDiscountPercent = pct(p.mrp, p.sellingPrice);
+    const maxVariantDiscountPercent = variantsFinal.length
+      ? Math.max(...variantsFinal.map((v) => v.discountPercent))
+      : 0;
+
+    // choose badge = max(product vs variants)
+    const badgeDiscountPercent = Math.max(productDiscountPercent, maxVariantDiscountPercent);
+
+    // images split
     const productImages = p.images.filter((img: any) => img.variantId === null);
     const mainProductImage = productImages.find((img: any) => img.isMain) || null;
     const additionalProductImages = productImages.filter((img: any) => !img.isMain);
 
-    // per-variant images map
     const variantImagesMap: Record<number, { main: any | null; additional: any[] }> = {};
-    for (const v of p.variants) {
+    for (const v of variantsFinal) {
       const imgs = p.images.filter((img: any) => img.variantId === v.id);
       variantImagesMap[v.id] = {
         main: imgs.find((img: any) => img.isMain) || null,
@@ -653,41 +695,58 @@ async searchProducts(q: QueryProductsDto) {
       };
     }
 
-    // displayPrice using only in-band values (product or filtered variants)
+    // displayPrice using in-band price values
     const productInBand =
       p.sellingPrice >= bandMin && p.sellingPrice <= bandMax ? p.sellingPrice : Infinity;
     const minVariant =
-      p.variants.length ? Math.min(...p.variants.map((v: any) => v.sellingPrice)) : Infinity;
+      variantsFinal.length ? Math.min(...variantsFinal.map((v: any) => v.sellingPrice)) : Infinity;
     const displayPrice = Math.min(productInBand, minVariant);
     const safeDisplayPrice = Number.isFinite(displayPrice) ? displayPrice : undefined;
 
     return {
       ...p,
-      // Flattened category context (like your findAll/findOne helpers)
+      variants: variantsFinal,
       mainCategoryTitle: grandparent?.title || null,
       mainCategoryId: grandparent?.id || null,
       subCategoryTitle: parent?.title || null,
       subCategoryId: parent?.id || null,
       listSubCategoryTitle: category?.title || null,
       listSubCategoryId: category?.id || null,
-
-      // images shaped exactly like findOne:
       images: {
         main: mainProductImage,
         additional: additionalProductImages,
         variants: variantImagesMap,
       },
-
-      // helpful for cards/UI
       displayPrice: safeDisplayPrice,
+
+      // 🔻 NEW fields for UI
+      productDiscountPercent,
+      maxVariantDiscountPercent,
+      badgeDiscountPercent, // ← use this for the red badge
     };
   });
 
+  // --- paginate after discount filter (if used)
+  const take = Math.min(Math.max(pageSize, 1), 100);
+  const skip = (Math.max(page, 1) - 1) * take;
+
+  const finalItems = hasDiscFilter ? reshaped.slice(skip, skip + take) : reshaped;
+  const totalAfter = hasDiscFilter ? reshaped.length : totalBase;
+
   return {
-    meta: { page, pageSize: take, total, totalPages: Math.ceil(total / take), sort },
-    items,
+    meta: {
+      page,
+      pageSize: take,
+      total: totalAfter,
+      totalPages: Math.ceil(totalAfter / take),
+      sort,
+      discountPctMin: discMin ?? null,
+      discountPctMax: discMax ?? null,
+    },
+    items: finalItems,
   };
 }
+
 
   // ====== LEGACY FILTER (kept for backward compatibility) ======
   // NOTE: Now also filters filterListIds in DB; removed post-fetch filtering.
@@ -792,69 +851,131 @@ async searchProducts(q: QueryProductsDto) {
   }
 
   // PRODUCT DETAILS + RELATED
-  async getProductDetails(productId: number, variantId?: number) {
-    const product = await this.prisma.product.findUnique({
-      where: { id: productId },
-      include: {
-        brand: true,
-        size: true,
-        color: true,
-        productDetails: true,
-        variants: { include: { size: true, color: true } },
-        images: true,
-        category: true,
-      },
-    });
-    if (!product) {
-      throw new NotFoundException(`Product with ID ${productId} not found`);
-    }
+// PRODUCT DETAILS with normalized images but still keeping selectedVariant + variantImages
+async getProductDetails(productId: number, variantId?: number) {
+  const pct = (mrp: number, sp: number): number => {
+    if (!Number.isFinite(mrp) || mrp <= 0) return 0;
+    const d = Math.max(0, mrp - sp);
+    return Math.round((d / mrp) * 100);
+  };
 
-    // sibling category ids
-    const siblingCategories = await this.prisma.category.findMany({
-      where: { parentId: product.category.parentId, id: { not: product.categoryId } },
-      select: { id: true },
-    });
-    const siblingCategoryIds = siblingCategories.map((c) => c.id);
+  const product = await this.prisma.product.findUnique({
+    where: { id: productId },
+    include: {
+      brand: true,
+      size: true,
+      color: true,
+      productDetails: true,
+      variants: { include: { size: true, color: true } },
+      images: true,
+      category: true,
+    },
+  });
 
-    // related products
-    const relatedProducts = await this.prisma.product.findMany({
-      where: {
-        status: true,
-        id: { not: productId },
-        OR: [{ categoryId: product.categoryId }, { categoryId: { in: siblingCategoryIds } }],
-      },
-      take: 10,
-      include: {
-        brand: true,
-        images: { where: { isMain: true, variantId: null }, take: 1 },
-        category: true,
-      },
-    });
+  if (!product) {
+    throw new NotFoundException(`Product with ID ${productId} not found`);
+  }
 
-    // product-level images
-    const productImages = product.images.filter((img) => img.variantId === null);
-    const mainProductImage = productImages.find((img) => img.isMain);
-    const additionalProductImages = productImages.filter((img) => !img.isMain);
+  // sibling category ids
+  const siblingCategories = await this.prisma.category.findMany({
+    where: { parentId: product.category.parentId, id: { not: product.categoryId } },
+    select: { id: true },
+  });
+  const siblingCategoryIds = siblingCategories.map((c) => c.id);
 
-    let selectedVariant: any = null;
-    let variantImages: any[] = [];
-    if (variantId) {
-      selectedVariant = product.variants.find((v) => v.id === variantId);
-      if (!selectedVariant) {
-        throw new NotFoundException(`Variant with ID ${variantId} not found for this product`);
-      }
-      variantImages = product.images.filter((img) => img.variantId === variantId);
-    }
+  // related products (add tiny variants select to compute badge)
+  const relatedProductsRaw = await this.prisma.product.findMany({
+    where: {
+      status: true,
+      id: { not: productId },
+      OR: [{ categoryId: product.categoryId }, { categoryId: { in: siblingCategoryIds } }],
+    },
+    take: 10,
+    include: {
+      brand: true,
+      images: { where: { isMain: true, variantId: null }, take: 1 },
+      category: true,
+      variants: { select: { id: true, mrp: true, sellingPrice: true } }, // for badge %
+    },
+  });
 
-    return {
-      ...product,
-      images: {
-        main: mainProductImage || null,
-        additional: additionalProductImages,
-        variantImages,
-      },
-      selectedVariant: selectedVariant || null,
-      relatedProducts,
+  // product-level images
+  const productImages = product.images.filter((img) => img.variantId === null);
+  const mainProductImage = productImages.find((img) => img.isMain) || null;
+  const additionalProductImages = productImages.filter((img) => !img.isMain);
+
+  // variant-level images
+  const variantImagesMap: Record<number, { main: any | null; additional: any[] }> = {};
+  for (const v of product.variants) {
+    const imgs = product.images.filter((img) => img.variantId === v.id);
+    variantImagesMap[v.id] = {
+      main: imgs.find((img) => img.isMain) || null,
+      additional: imgs.filter((img) => !img.isMain),
     };
   }
+
+  // add discount% to variants
+  const variantsWithDiscount = product.variants.map((v: any) => ({
+    ...v,
+    discountPercent: pct(v.mrp, v.sellingPrice),
+  }));
+
+  // product-level discount summary
+  const productDiscountPercent = pct(product.mrp, product.sellingPrice);
+  const maxVariantDiscountPercent = variantsWithDiscount.length
+    ? Math.max(...variantsWithDiscount.map((v: any) => v.discountPercent))
+    : 0;
+  const badgeDiscountPercent = Math.max(productDiscountPercent, maxVariantDiscountPercent);
+
+  // selected variant support (keep structure; just add discount%)
+  let selectedVariant: any = null;
+  let variantImages: any[] = [];
+  if (variantId) {
+    selectedVariant = variantsWithDiscount.find((v: any) => v.id === variantId);
+    if (!selectedVariant) {
+      throw new NotFoundException(`Variant with ID ${variantId} not found for this product`);
+    }
+    variantImages = product.images.filter((img) => img.variantId === variantId);
+  }
+
+  // shape relatedProducts with badgeDiscountPercent (product vs its variants)
+  const relatedProducts = relatedProductsRaw.map((rp: any) => {
+    const rpProductPct = pct(rp.mrp, rp.sellingPrice);
+    const rpVarMaxPct = rp.variants?.length
+      ? Math.max(...rp.variants.map((vv: any) => pct(vv.mrp, vv.sellingPrice)))
+      : 0;
+    const rpBadge = Math.max(rpProductPct, rpVarMaxPct);
+    return {
+      ...rp,
+      badgeDiscountPercent: rpBadge,
+    };
+  });
+
+  return {
+    ...product,
+    // override variants with discount-augmented versions
+    variants: variantsWithDiscount,
+
+    // images in your preferred structure
+    images: {
+      main: mainProductImage,
+      additional: additionalProductImages,
+      variants: variantImagesMap, // e.g. { "226": { main, additional }, ... }
+    },
+
+    // ✅ NEW discount fields at product level
+    productDiscountPercent,
+    maxVariantDiscountPercent,
+    badgeDiscountPercent,
+
+    // preserve selectedVariant + add images
+    selectedVariant: selectedVariant || null,
+    variantImages,
+
+    // related with discount badge
+    relatedProducts,
+  };
+}
+
+
 }
