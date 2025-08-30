@@ -547,6 +547,7 @@ async searchProducts(q: QueryProductsDto) {
       { title: { contains: searchStr } },
       { description: { contains: searchStr } },
       { sku: { contains: searchStr } },
+      { searchKeywords: { contains: searchStr } },
     ];
   }
 
