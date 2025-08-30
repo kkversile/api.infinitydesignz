@@ -41,7 +41,7 @@ import { UserSubscribeModule } from './user-subscribe/user-subscribe.module';
 import {FiltersModule} from './filters/filters.module';
 import { KeywordsModule } from './keywords/keywords.module';
 import { MainProductPromotionModule } from './main-product-promotion/main-product-promotion.module';
-
+import { HomeCategoriesModule } from './home-categories/home-categories.module';
 @Module({
   imports: [      
 
@@ -76,7 +76,8 @@ import { MainProductPromotionModule } from './main-product-promotion/main-produc
     ContactsModule,
     FiltersModule,
     KeywordsModule,
-    MainProductPromotionModule
+    MainProductPromotionModule,
+    HomeCategoriesModule,
   ],
 })
 export class AppModule {}

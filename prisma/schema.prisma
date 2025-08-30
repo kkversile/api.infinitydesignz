@@ -160,14 +160,6 @@ model Finish {
   @@map("finishes")
 }
 
-model RoomType {
-  id     Int     @id @default(autoincrement())
-  name   String
-  status Boolean @default(true)
-
-  @@map("room_types")
-}
-
 model Material {
   id     Int     @id @default(autoincrement())
   name   String
@@ -317,18 +309,18 @@ model AssemblyType {
 // ─── CATEGORY & PRODUCT ────────────────────────────────────────────────────────
 
 model Category {
-  id           Int        @id @default(autoincrement())
-  title        String
-  position     Int?
-  status       Boolean    @default(true)
-  frontDisplay String?
-  appIcon      String?
-  webImage     String?
-  mainImage    String?
-  parentId     Int?
-  showInNeedHelpBuying Boolean @default(false)
-  parent       Category?  @relation("CategoryToChildren", fields: [parentId], references: [id])
-  children     Category[] @relation("CategoryToChildren")
+  id                   Int        @id @default(autoincrement())
+  title                String
+  position             Int?
+  status               Boolean    @default(true)
+  frontDisplay         String?
+  appIcon              String?
+  webImage             String?
+  mainImage            String?
+  parentId             Int?
+  showInNeedHelpBuying Boolean    @default(false)
+  parent               Category?  @relation("CategoryToChildren", fields: [parentId], references: [id])
+  children             Category[] @relation("CategoryToChildren")
 
   // direct one‑to‑one to FeatureType and FilterType
   featureTypeId Int?
@@ -343,6 +335,7 @@ model Category {
 
   // Back-relation for MainProductPromotion (single categoryId like Product)
   mainProductPromotions MainProductPromotion[] @relation("MPP_Category")
+  FeaturedCategory      FeaturedCategory[]
 
   @@map("categories")
 }
@@ -777,4 +770,36 @@ model Keyword {
 
   @@index([createdAt])
   @@map("keywords") // keeps the existing table name
+}
+
+// Category already exists; ensure it’s hierarchical via parentId.
+// Second-level means: category.parentId != null AND parent.parentId == null
+
+model FeaturedCategory {
+  id            Int       @id @default(autoincrement())
+  categoryId    Int
+  room          RoomType // which top tab/section (LivingRoom, Kitchen, Office, etc.)
+  position      Int // 1..N ordering within that room
+  status      Boolean   @default(true)
+  titleOverride String? // optional: card title override
+  imageOverride String? // optional: custom image for the card
+  startsAt      DateTime? // optional scheduling window
+  endsAt        DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  category Category @relation(fields: [categoryId], references: [id])
+
+  // one category can appear once per room
+  @@unique([room, categoryId])
+  // prevent two cards fighting for the same slot while active (soft rule, but helpful)
+  @@index([room, position])
+}
+
+enum RoomType {
+  LivingRoom
+  Kitchen
+  Office
+  Study
+  Garden
 }
