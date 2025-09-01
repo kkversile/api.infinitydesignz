@@ -74,6 +74,7 @@ export class WishlistService {
             brand: { select: { name: true } },
             color: { select: { label: true } },
             size: { select: { title: true } },
+            category: { include: { parent: true } },
           },
         },
         variant: {
@@ -86,7 +87,8 @@ export class WishlistService {
       },
     });
 
-    return list.map((item) => {
+    // Shape wishlist items
+    const wishlistItems = list.map((item) => {
       const useVariant = item.variantId !== null;
 
       const mainImage = useVariant
@@ -131,7 +133,64 @@ export class WishlistService {
 
       return response;
     });
+
+    // Build relatedProducts ONCE for all wishlist items
+    const wishlistProductIds = list.map((i) => i.productId);
+    const categoryIds = list.map((i) => i.product?.categoryId).filter(Boolean);
+
+    // Gather sibling categories
+    const siblingCategoryIds: number[] = [];
+    for (const catId of categoryIds) {
+      const cat = await this.prisma.category.findUnique({ where: { id: catId } });
+      if (cat?.parentId) {
+        const siblings = await this.prisma.category.findMany({
+          where: { parentId: cat.parentId },
+          select: { id: true },
+        });
+        siblingCategoryIds.push(...siblings.map((s) => s.id));
+      }
+    }
+
+    const relatedProductsRaw = await this.prisma.product.findMany({
+      where: {
+        status: true,
+        id: { notIn: wishlistProductIds },
+        categoryId: { in: [...categoryIds, ...siblingCategoryIds] },
+      },
+      take: 10,
+      include: {
+        brand: { select: { name: true } },
+        images: { where: { isMain: true }, take: 1 },
+        variants: { select: { id: true, mrp: true, sellingPrice: true } },
+      },
+    });
+
+    const pct = (mrp: number, sp: number) => {
+      if (!Number.isFinite(mrp) || mrp <= 0) return 0;
+      return Math.round(((mrp - sp) / mrp) * 100);
+    };
+
+    const relatedProducts = relatedProductsRaw.map((rp) => {
+      const rpProductPct = pct(rp.mrp, rp.sellingPrice);
+      const rpVarMaxPct = rp.variants?.length
+        ? Math.max(...rp.variants.map((v) => pct(v.mrp, v.sellingPrice)))
+        : 0;
+      const badgeDiscountPercent = Math.max(rpProductPct, rpVarMaxPct);
+
+      return {
+        id: rp.id,
+        title: rp.title,
+        brand: rp.brand?.name,
+        mrp: rp.mrp,
+        sellingPrice: rp.sellingPrice,
+        imageUrl: rp.images?.[0]?.url ? formatImageUrl(rp.images[0].url) : null,
+        badgeDiscountPercent,
+      };
+    });
+
+    return { wishlistItems, relatedProducts };
   }
+
 
   async remove(userId: number, wishlistId: number) {
     const wishlist = await this.prisma.wishlist.findUnique({ where: { id: wishlistId } });
