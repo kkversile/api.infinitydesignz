@@ -300,6 +300,7 @@ async getAllPromotionsAggregate(
       displayCount: true,
       priority: true,
       imageUrl: true,
+      showTitle:true,
       mainProductPromotions: {
         where: { status: true },
         orderBy: { priority: 'asc' },
@@ -371,6 +372,7 @@ async getAllPromotionsAggregate(
         id: c.id,
         title: c.title,
         displayCount: c.displayCount,
+        showTitle: c.showTitle === null ? true : Boolean(c.showTitle),
         priority: c.priority,
         imageUrl: img(MAIN_CATEGORY_PROMOTION_IMAGE_PATH, c.imageUrl),
         promotions,

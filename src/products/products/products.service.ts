@@ -566,24 +566,38 @@ async searchProducts(q: QueryProductsDto) {
     });
   }
 
-  // map color labels -> ids
+  // --- COLOR filter: product OR any variant color ---
   if (colorLabels.length > 0) {
-    const colorIds = await this.prisma.color.findMany({
+    const colorIdsRows = await this.prisma.color.findMany({
       where: { label: { in: colorLabels } },
       select: { id: true },
     });
-    const ids = colorIds.map((c) => c.id);
-    if (ids.length > 0) (where.AND ??= []).push({ colorId: { in: ids } });
+    const colorIds = colorIdsRows.map((c) => c.id);
+    if (colorIds.length > 0) {
+      (where.AND ??= []).push({
+        OR: [
+          { colorId: { in: colorIds } },                         // product-level color
+          { variants: { some: { colorId: { in: colorIds } } } }, // any variant color
+        ],
+      });
+    }
   }
 
-  // map size titles -> ids
+  // --- SIZE filter: product OR any variant size ---
   if (sizeTitles.length > 0) {
-    const sizeIds = await this.prisma.sizeUOM.findMany({
+    const sizeIdsRows = await this.prisma.sizeUOM.findMany({
       where: { title: { in: sizeTitles } },
       select: { id: true },
     });
-    const ids = sizeIds.map((s) => s.id);
-    if (ids.length > 0) (where.AND ??= []).push({ sizeId: { in: ids } });
+    const sizeIds = sizeIdsRows.map((s) => s.id);
+    if (sizeIds.length > 0) {
+      (where.AND ??= []).push({
+        OR: [
+          { sizeId: { in: sizeIds } },                           // product-level size
+          { variants: { some: { sizeId: { in: sizeIds } } } },   // any variant size
+        ],
+      });
+    }
   }
 
   // ProductFilter ANY semantics
@@ -613,6 +627,8 @@ async searchProducts(q: QueryProductsDto) {
     where,
     include: {
       brand: true,
+        color: true,         
+        size: true,
       category: { include: { parent: { include: { parent: true } } } },
       variants: variantsInclude,
       images: true,
@@ -747,6 +763,7 @@ async searchProducts(q: QueryProductsDto) {
     items: finalItems,
   };
 }
+
 
 
   // ====== LEGACY FILTER (kept for backward compatibility) ======
