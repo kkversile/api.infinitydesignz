@@ -64,6 +64,8 @@ private async getCategoryWithChildrenRecursive(id: number): Promise<any> {
         title: data.title,
         status,
         showInNeedHelpBuying: normalizeBool(data.showInNeedHelpBuying) ?? false, 
+        showInHomeTabs : normalizeBool(data.showInHomeTabs) ?? false,
+
         ...(parentId    != null && { parent:     { connect: { id: parentId    } } }),
         ...(featureTypeId != null && { featureType: { connect: { id: featureTypeId } } }),
         ...(filterTypeId  != null && { filterType:  { connect: { id: filterTypeId  } } }),
@@ -152,6 +154,9 @@ async findOne(id: number) {
       }),
       ...(data.showInNeedHelpBuying !== undefined
         ? { showInNeedHelpBuying: normalizeBool(data.showInNeedHelpBuying) }
+        : {}),
+         ...(data.showInHomeTabs !== undefined
+        ? { showInHomeTabs: normalizeBool(data.showInHomeTabs) }
         : {}),
       ...(data.featureTypeId !== undefined && {
         featureType: { connect: { id: Number(data.featureTypeId) } }
@@ -285,5 +290,45 @@ async toggleNeedHelpBuying(id: number, value: boolean) {
 
   
 }
+
+
+
+// ✅ returns subcategories flagged for “Need Help Buying”
+async findHomeTabs() {
+  const categories = await this.prisma.category.findMany({
+    where: {
+      status: true,
+      showInHomeTabs: true,
+       parentId: null ,
+      
+    },
+    orderBy: [{ position: 'asc' }, { title: 'asc' }],
+    select: { id: true },
+  });
+
+  const result = [];
+  for (const cat of categories) {
+    const fullCategory = await this.getCategoryWithChildrenRecursive(cat.id);
+  if ('featureType' in fullCategory) {
+      delete fullCategory.featureType;
+    }
+    if ('filterType' in fullCategory) {
+      delete fullCategory.filterType;
+    }
+    if (fullCategory) result.push(fullCategory);
+  }
+
+  return result;
+}
+
+async toggleHomeTabs(id: number, value: boolean) {
+  return this.prisma.category.update({
+    where: { id },
+    data: { showInHomeTabs: !!value },
+  });
+
+  
+}
+
 
 }

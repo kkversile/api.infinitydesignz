@@ -57,6 +57,26 @@ export class CategoriesController {
 findNeedHelpBuying() {
   return this.service.findNeedHelpBuying();
 }
+
+
+@Get('home-tabs')
+findHomeTabs() {
+  return this.service.findHomeTabs();
+}
+
+@Patch('home-tabs/:id')
+toggleHomeTabs(
+  @Param('id') id: number,
+  @Body('value') value: any,
+) {
+  const boolVal =
+    typeof value === 'boolean' ? value :
+    typeof value === 'string'  ? value === 'true' :
+    false;
+  return this.service.toggleHomeTabs(id, boolVal);
+}
+
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.service.findOne(+id);

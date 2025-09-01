@@ -319,6 +319,7 @@ model Category {
   mainImage            String?
   parentId             Int?
   showInNeedHelpBuying Boolean    @default(false)
+  showInHomeTabs       Boolean    @default(false)
   parent               Category?  @relation("CategoryToChildren", fields: [parentId], references: [id])
   children             Category[] @relation("CategoryToChildren")
 
