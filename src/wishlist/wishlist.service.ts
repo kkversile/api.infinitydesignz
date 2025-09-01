@@ -187,7 +187,9 @@ export class WishlistService {
         badgeDiscountPercent,
       };
     });
-
+ if (wishlistItems.length === 0 && relatedProducts.length === 0) {
+      return [];
+    }
     return { wishlistItems, relatedProducts };
   }
 
