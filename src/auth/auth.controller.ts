@@ -14,6 +14,7 @@ import {
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { AuthRequestDto, RegisterRequestDto, VerifyOtpRequestDto, ProfileUpdateRequestDto } from './auth.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { AuthGuard } from './auth.guard';
 
 @Controller('auth')
@@ -24,10 +25,18 @@ export class AuthController {
   @Post('login')
   async login(@Body() body: { email: string; password: string }) {
     const user = await this.authService.validateAdmin(body.email, body.password);
+    console.log(user);
     if (!user) throw new UnauthorizedException('Invalid credentials');
     return this.authService.loginAdmin(user);
   }
 
+@Patch('change-password')
+@UseGuards(JwtAuthGuard)
+async changePassword(@Req() req: any, @Body() dto: ChangePasswordDto) {
+  console.log('req.user',req.user);
+  const userId: number = req.user?.id; // comes from your JWT payload
+  return this.authService.changeAdminPassword(userId, dto.oldPassword, dto.newPassword);
+}
   @Get('verify-token')
   @UseGuards(JwtAuthGuard)
   verifyToken(@Req() req: Request) {
