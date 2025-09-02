@@ -20,7 +20,7 @@ import {
 } from './auth.dto';
 import { plainToInstance } from 'class-transformer';
 import * as bcrypt from 'bcrypt';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class AuthService {
