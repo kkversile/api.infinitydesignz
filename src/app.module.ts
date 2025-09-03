@@ -42,6 +42,7 @@ import {FiltersModule} from './filters/filters.module';
 import { KeywordsModule } from './keywords/keywords.module';
 import { MainProductPromotionModule } from './main-product-promotion/main-product-promotion.module';
 import { HomeCategoriesModule } from './home-categories/home-categories.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 @Module({
   imports: [      
 
@@ -78,6 +79,7 @@ import { HomeCategoriesModule } from './home-categories/home-categories.module';
     KeywordsModule,
     MainProductPromotionModule,
     HomeCategoriesModule,
+    DashboardModule,
   ],
 })
 export class AppModule {}
