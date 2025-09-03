@@ -45,7 +45,7 @@ private async getCategoryWithChildrenRecursive(id: number): Promise<any> {
   /** Create a leaf category with direct FeatureType/FilterType FKs */
   async create(data: any, files: any = {}) {
     const parentId = data.parentId != null ? Number(data.parentId) : null;
-    const status   = data.status === 'true' || data.status === true;
+    const status = normalizeBool(data.status) ?? false;
 
     // 1) prevent duplicate title under same parent
     if (await this.prisma.category.findFirst({ where: { title: data.title, parentId } })) {
@@ -146,7 +146,9 @@ async findOne(id: number) {
 
     const payload: any = {
       ...(data.title       && { title: data.title.trim() }),
-      ...(data.status      && { status: data.status === 'true' || data.status === true }),
+     ...(data.status !== undefined && data.status !== null
+  ? { status: normalizeBool(data.status) }
+  : {}),
       ...(data.parentId    !== undefined && {
         parent: data.parentId === null
           ? { disconnect: true }
@@ -168,7 +170,7 @@ async findOne(id: number) {
       ...(files.appIcon?.[0]   && { appIcon:   files.appIcon[0].filename   }),
       ...(files.webImage?.[0]  && { webImage:  files.webImage[0].filename  }),
     };
-
+console.log('payload',payload);
     const updated = await this.prisma.category.update({
       where: { id },
       data: payload,

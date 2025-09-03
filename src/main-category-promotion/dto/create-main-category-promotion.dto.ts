@@ -1,6 +1,20 @@
 import { IsBoolean, IsInt, IsOptional, IsString } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 
+const BoolTransform = () =>
+  Transform(({ value }) => {
+    // Treat missing/empty as "not provided"
+    if (value === undefined || value === null || value === '') return undefined;
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value === 1;
+    if (typeof value === 'string') {
+      const v = value.toLowerCase().trim();
+      if (['true', '1', 'yes', 'on'].includes(v)) return true;
+      if (['false', '0', 'no', 'off'].includes(v)) return false;
+    }
+    return undefined; // keeps it optional if garbage comes in
+  });
+
 export class CreateMainCategoryPromotionDto {
   @IsString()
   title: string;
@@ -15,19 +29,13 @@ export class CreateMainCategoryPromotionDto {
   @IsOptional()
   priority?: number;
 
-  @Transform(({ value }) =>
-    value === 'true' || value === true ? true :
-    value === 'false' || value === false ? false : value
-  )
+  @BoolTransform()
   @IsBoolean()
   @IsOptional()
-  status?: boolean;
+  status?: boolean; // service will default to false if omitted
 
-   @Transform(({ value }) =>
-    value === 'true' || value === true ? true :
-    value === 'false' || value === false ? false : value
-  )
-   @IsOptional()
+  @BoolTransform()
   @IsBoolean()
-  showTitle?: boolean = true; // ✅ default true
+  @IsOptional()
+  showTitle?: boolean = true; // stays true when omitted
 }

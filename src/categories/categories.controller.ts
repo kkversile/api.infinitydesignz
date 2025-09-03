@@ -113,6 +113,7 @@ async updateStatusBulk(
       }
   ) {
          body.status = parseBooleanStatus(body.status); // 
+         console.log(body);
     return this.service.update(+id, body, files);
   }
 
