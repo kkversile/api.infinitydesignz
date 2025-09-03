@@ -1,6 +1,7 @@
 
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete,Query } from '@nestjs/common';
 import { FeatureSetService } from './feature-sets.service';
+import { StatusQueryDto } from '../common-status/dto/status-query.dto';
 
 @Controller('feature-sets')
 export class FeatureSetController {
@@ -12,10 +13,9 @@ export class FeatureSetController {
   }
 
   @Get()
-  findAll() {
-    return this.service.findAll();
-  }
-
+  findAll(@Query() { status }: StatusQueryDto) {
+  return this.service.findAll(status);
+}
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.service.findOne(+id);

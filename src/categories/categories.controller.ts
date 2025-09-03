@@ -1,6 +1,8 @@
 import { Express } from 'express';
 /// <reference types="multer" />
 import { multerCategoryStorage } from '../config/multer.config'; // adjust path
+import { StatusQueryDto } from '../common-status/dto/status-query.dto';
+
 
 import {
   Controller,
@@ -13,6 +15,7 @@ import {
   UseGuards,
   UseInterceptors,
   UploadedFiles,
+  Query,
   BadRequestException
 } from '@nestjs/common';
 
@@ -50,9 +53,10 @@ export class CategoriesController {
 
   
   @Get()
-  findAll() {
-    return this.service.findAll();
-  }
+   findAll(@Query() q: StatusQueryDto) {
+     return this.service.findAll(q.status);
+   }
+ 
   @Get('need-help-buying')
 findNeedHelpBuying() {
   return this.service.findNeedHelpBuying();

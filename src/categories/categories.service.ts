@@ -1,46 +1,59 @@
 // src/categories/categories.service.ts
 
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import { PrismaService }              from '../prisma/prisma.service';
-import { CATEGORY_IMAGE_PATH }        from '../config/constants';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+} from "@nestjs/common";
+import { PrismaService } from "../prisma/prisma.service";
+import { CATEGORY_IMAGE_PATH } from "../config/constants";
+import { StatusFilter } from "../common-status/dto/status-query.dto";
+import { statusWhere } from "../common-status/utils/status-where";
 
-const formatImage = (fn: string|null) => fn ? `${CATEGORY_IMAGE_PATH}${fn}` : null;
+const formatImage = (fn: string | null) =>
+  fn ? `${CATEGORY_IMAGE_PATH}${fn}` : null;
 const formatCategoryResponse = (c: any) => ({
   ...c,
   mainImage: formatImage(c.mainImage),
-  appIcon:   formatImage(c.appIcon),
-  webImage:  formatImage(c.webImage),
+  appIcon: formatImage(c.appIcon),
+  webImage: formatImage(c.webImage),
 });
 const normalizeBool = (val: any): boolean | undefined => {
   if (val === undefined || val === null) return undefined;
-  if (typeof val === 'boolean') return val;
-  if (typeof val === 'string') return val.toLowerCase() === 'true';
+  if (typeof val === "boolean") return val;
+  if (typeof val === "string") return val.toLowerCase() === "true";
   return Boolean(val);
 };
 
 @Injectable()
 export class CategoriesService {
   constructor(private prisma: PrismaService) {}
-/** Recursive helper to fetch children of a category */
-private async getCategoryWithChildrenRecursive(id: number): Promise<any> {
-  const category = await this.prisma.category.findUnique({
-    where: { id },
-    include: {
-      children: true,
-      featureType: { include: { featureSets: { include: { featureLists: true } } } },
-      filterType:  { include: { filterSets:  { include: { filterLists:  true } } } },
-    },
-  });
+  /** Recursive helper to fetch children of a category */
+  private async getCategoryWithChildrenRecursive(id: number): Promise<any> {
+    const category = await this.prisma.category.findUnique({
+      where: { id },
+      include: {
+        children: true,
+        featureType: {
+          include: { featureSets: { include: { featureLists: true } } },
+        },
+        filterType: {
+          include: { filterSets: { include: { filterLists: true } } },
+        },
+      },
+    });
 
-  if (!category) return null;
+    if (!category) return null;
 
-  return {
-    ...formatCategoryResponse(category),
-    children: await Promise.all(
-      category.children.map(child => this.getCategoryWithChildrenRecursive(child.id))
-    )
-  };
-}
+    return {
+      ...formatCategoryResponse(category),
+      children: await Promise.all(
+        category.children.map((child) =>
+          this.getCategoryWithChildrenRecursive(child.id)
+        )
+      ),
+    };
+  }
 
   /** Create a leaf category with direct FeatureType/FilterType FKs */
   async create(data: any, files: any = {}) {
@@ -48,289 +61,314 @@ private async getCategoryWithChildrenRecursive(id: number): Promise<any> {
     const status = normalizeBool(data.status) ?? false;
 
     // 1) prevent duplicate title under same parent
-    if (await this.prisma.category.findFirst({ where: { title: data.title, parentId } })) {
+    if (
+      await this.prisma.category.findFirst({
+        where: { title: data.title, parentId },
+      })
+    ) {
       throw new BadRequestException(
-        'Category with same title already exists under selected parent.'
+        "Category with same title already exists under selected parent."
       );
     }
 
     // 2) parse single IDs
-    const featureTypeId = data.featureTypeId != null ? Number(data.featureTypeId) : null;
-    const filterTypeId  = data.filterTypeId  != null ? Number(data.filterTypeId)  : null;
+    const featureTypeId =
+      data.featureTypeId != null ? Number(data.featureTypeId) : null;
+    const filterTypeId =
+      data.filterTypeId != null ? Number(data.filterTypeId) : null;
 
     // 3) create record, connecting FKs
     const category = await this.prisma.category.create({
       data: {
         title: data.title,
         status,
-        showInNeedHelpBuying: normalizeBool(data.showInNeedHelpBuying) ?? false, 
-        showInHomeTabs : normalizeBool(data.showInHomeTabs) ?? false,
+        showInNeedHelpBuying: normalizeBool(data.showInNeedHelpBuying) ?? false,
+        showInHomeTabs: normalizeBool(data.showInHomeTabs) ?? false,
 
-        ...(parentId    != null && { parent:     { connect: { id: parentId    } } }),
-        ...(featureTypeId != null && { featureType: { connect: { id: featureTypeId } } }),
-        ...(filterTypeId  != null && { filterType:  { connect: { id: filterTypeId  } } }),
+        ...(parentId != null && { parent: { connect: { id: parentId } } }),
+        ...(featureTypeId != null && {
+          featureType: { connect: { id: featureTypeId } },
+        }),
+        ...(filterTypeId != null && {
+          filterType: { connect: { id: filterTypeId } },
+        }),
         mainImage: files.mainImage?.[0]?.filename || null,
-        appIcon:   files.appIcon?.[0]?.filename   || null,
-        webImage:  files.webImage?.[0]?.filename  || null,
+        appIcon: files.appIcon?.[0]?.filename || null,
+        webImage: files.webImage?.[0]?.filename || null,
       },
     });
- return {
-    message: 'Category created successfully',
-    data: formatCategoryResponse(category),
-  };
-   
+    return {
+      message: "Category created successfully",
+      data: formatCategoryResponse(category),
+    };
   }
 
   /** List all categories with nested FeatureType→Sets→Lists and FilterType→Sets→Lists */
-async findAll() {
-  const categories = await this.prisma.category.findMany({
-    include: {
-      featureType: {
-        include: { featureSets: { include: { featureLists: true } } },
+  async findAll(status: StatusFilter = "active") {
+    const categories = await this.prisma.category.findMany({
+      where: statusWhere(status),
+      include: {
+        featureType: {
+          include: { featureSets: { include: { featureLists: true } } },
+        },
+        filterType: {
+          include: { filterSets: { include: { filterLists: true } } },
+        },
       },
-      filterType: {
-        include: { filterSets: { include: { filterLists: true } } },
-      },
-    },
-    orderBy: { id: 'desc' },
-  });
+      orderBy: { id: "desc" },
+    });
 
-  const formatted = categories.map(c => ({
-    ...formatCategoryResponse(c),
-    children: [],
-  }));
+    const formatted = categories.map((c) => ({
+      ...formatCategoryResponse(c),
+      children: [],
+    }));
 
-  const categoryMap = new Map<number, any>();
-  formatted.forEach(cat => categoryMap.set(cat.id, cat));
+    const categoryMap = new Map<number, any>();
+    formatted.forEach((cat) => categoryMap.set(cat.id, cat));
 
-  const result = [];
+    const result = [];
 
-  for (const cat of formatted) {
-    if (cat.parentId) {
-      const parent = categoryMap.get(cat.parentId);
-      if (parent) {
-        parent.children.push(cat);
+    for (const cat of formatted) {
+      if (cat.parentId) {
+        const parent = categoryMap.get(cat.parentId);
+        if (parent) {
+          parent.children.push(cat);
+        }
       }
+      // Whether parent or not, we return all nodes in the list
+      result.push(cat);
     }
-    // Whether parent or not, we return all nodes in the list
-    result.push(cat);
+
+    return result;
   }
 
-  return result;
-}
-
   /** Fetch one category (with its tree) plus its FeatureType & FilterType hierarchy */
-async findOne(id: number) {
-  const category = await this.getCategoryWithChildrenRecursive(id);
-  if (!category) throw new NotFoundException(`Category ${id} not found`);
-  return category;
-}
+  async findOne(id: number) {
+    const category = await this.getCategoryWithChildrenRecursive(id);
+    if (!category) throw new NotFoundException(`Category ${id} not found`);
+    return category;
+  }
   /** Update direct FKs via connect/disconnect on one FeatureType & one FilterType */
   async update(id: number, data: any, files: any = {}) {
     const existing = await this.prisma.category.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException(`Category ${id} not found`);
 
-    // duplicate‐title check
-    if (data.title) {
+    // ---- resolve the "target" parentId for this update (even if not provided) ----
+    const hasParentInPayload = Object.prototype.hasOwnProperty.call(
+      data,
+      "parentId"
+    );
+    const targetParentId = hasParentInPayload
+      ? data.parentId === null || data.parentId === "null"
+        ? null
+        : Number(data.parentId)
+      : existing.parentId; // ← use current parent when not provided
+
+    // ---- duplicate-title check (only if title is sent) ----
+    if (data.title !== undefined && String(data.title).trim() !== "") {
+      const title = String(data.title).trim();
+
       const dup = await this.prisma.category.findFirst({
         where: {
-          title: data.title.trim(),
-          parentId: data.parentId != null ? Number(data.parentId) : undefined,
-          NOT: { id }
-        }
+          title, // same title
+          parentId: targetParentId, // under the *target* parent
+          NOT: { id }, // not myself
+        },
       });
-      if (dup) throw new BadRequestException(
-        'Category with same title already exists under selected parent.'
-      );
+
+      if (dup) {
+        throw new BadRequestException(
+          "Category with same title already exists under selected parent."
+        );
+      }
     }
 
+    // ---- build payload ----
     const payload: any = {
-      ...(data.title       && { title: data.title.trim() }),
-     ...(data.status !== undefined && data.status !== null
-  ? { status: normalizeBool(data.status) }
-  : {}),
-      ...(data.parentId    !== undefined && {
-        parent: data.parentId === null
-          ? { disconnect: true }
-          : { connect:    { id: Number(data.parentId) } }
+      ...(data.title !== undefined && { title: String(data.title).trim() }),
+      ...(data.status !== undefined && { status: normalizeBool(data.status) }),
+
+      // parent connect/disconnect only if parentId was explicitly sent
+      ...(hasParentInPayload && {
+        parent:
+          targetParentId === null
+            ? { disconnect: true }
+            : { connect: { id: targetParentId } },
       }),
-      ...(data.showInNeedHelpBuying !== undefined
-        ? { showInNeedHelpBuying: normalizeBool(data.showInNeedHelpBuying) }
-        : {}),
-         ...(data.showInHomeTabs !== undefined
-        ? { showInHomeTabs: normalizeBool(data.showInHomeTabs) }
-        : {}),
+
+      ...(data.showInNeedHelpBuying !== undefined && {
+        showInNeedHelpBuying: normalizeBool(data.showInNeedHelpBuying),
+      }),
+      ...(data.showInHomeTabs !== undefined && {
+        showInHomeTabs: normalizeBool(data.showInHomeTabs),
+      }),
+
       ...(data.featureTypeId !== undefined && {
-        featureType: { connect: { id: Number(data.featureTypeId) } }
+        featureType: { connect: { id: Number(data.featureTypeId) } },
       }),
       ...(data.filterTypeId !== undefined && {
-        filterType: { connect: { id: Number(data.filterTypeId) } }
+        filterType: { connect: { id: Number(data.filterTypeId) } },
       }),
+
       ...(files.mainImage?.[0] && { mainImage: files.mainImage[0].filename }),
-      ...(files.appIcon?.[0]   && { appIcon:   files.appIcon[0].filename   }),
-      ...(files.webImage?.[0]  && { webImage:  files.webImage[0].filename  }),
+      ...(files.appIcon?.[0] && { appIcon: files.appIcon[0].filename }),
+      ...(files.webImage?.[0] && { webImage: files.webImage[0].filename }),
     };
-console.log('payload',payload);
+
     const updated = await this.prisma.category.update({
       where: { id },
       data: payload,
     });
 
-     return {
-    message: 'Category updated successfully',
-    data: formatCategoryResponse(updated),
-  };
+    return {
+      message: "Category updated successfully",
+      data: formatCategoryResponse(updated),
+    };
   }
 
   async updateStatusBulk(ids: number[], status: boolean) {
     if (!Array.isArray(ids) || !ids.length) {
-      throw new BadRequestException('IDs must be a non-empty array.');
+      throw new BadRequestException("IDs must be a non-empty array.");
     }
     const res = await this.prisma.category.updateMany({
       where: { id: { in: ids } },
       data: { status },
     });
     return {
-      message:      `Updated ${res.count} categories' status to ${status}`,
+      message: `Updated ${res.count} categories' status to ${status}`,
       updatedCount: res.count,
     };
   }
 
- async remove(id: number) {
-  const category = await this.prisma.category.findUnique({
-    where: { id },
-    include: { children: true },
-  });
-  if (!category) throw new NotFoundException('Category not found');
+  async remove(id: number) {
+    const category = await this.prisma.category.findUnique({
+      where: { id },
+      include: { children: true },
+    });
+    if (!category) throw new NotFoundException("Category not found");
 
-  // Recursively collect all descendant category IDs
-  const collectDescendants = async (categoryId: number): Promise<number[]> => {
-    const children = await this.prisma.category.findMany({
-      where: { parentId: categoryId },
+    // Recursively collect all descendant category IDs
+    const collectDescendants = async (
+      categoryId: number
+    ): Promise<number[]> => {
+      const children = await this.prisma.category.findMany({
+        where: { parentId: categoryId },
+        select: { id: true },
+      });
+      const ids = children.map((c) => c.id);
+
+      for (const child of children) {
+        ids.push(...(await collectDescendants(child.id)));
+      }
+
+      return ids;
+    };
+
+    const descendantIds = await collectDescendants(id);
+    const allCategoryIds = [id, ...descendantIds];
+
+    // Check for products assigned to any of the categories
+    const assignedProducts = await this.prisma.product.findMany({
+      where: { categoryId: { in: allCategoryIds } },
+      select: {
+        id: true,
+        sku: true,
+        title: true,
+        categoryId: true,
+      },
+      take: 10,
+    });
+
+    if (assignedProducts.length > 0) {
+      const preview = assignedProducts
+        .map(
+          (p) => `#${p.id} (${p.sku}) (${p.title}) → Category #${p.categoryId}`
+        )
+        .join(", ");
+
+      throw new BadRequestException(
+        ` Cannot delete: One or more categories (including children) are assigned to products: ${preview}. Please reassign them first.`
+      );
+    }
+
+    // Delete children first (deepest first)
+    for (const childId of descendantIds.reverse()) {
+      await this.prisma.category.delete({ where: { id: childId } });
+    }
+
+    // Delete main category
+    await this.prisma.category.delete({ where: { id } });
+
+    return {
+      message: "Category deleted successfully",
+    };
+  }
+
+  // ✅ returns subcategories flagged for “Need Help Buying”
+  async findNeedHelpBuying() {
+    const categories = await this.prisma.category.findMany({
+      where: {
+        status: true,
+        showInNeedHelpBuying: true,
+        NOT: { parentId: null },
+      },
+      orderBy: [{ position: "asc" }, { title: "asc" }],
       select: { id: true },
     });
-    const ids = children.map(c => c.id);
 
-    for (const child of children) {
-      ids.push(...await collectDescendants(child.id));
+    const result = [];
+    for (const cat of categories) {
+      const fullCategory = await this.getCategoryWithChildrenRecursive(cat.id);
+      if ("featureType" in fullCategory) {
+        delete fullCategory.featureType;
+      }
+      if ("filterType" in fullCategory) {
+        delete fullCategory.filterType;
+      }
+      if (fullCategory) result.push(fullCategory);
     }
 
-    return ids;
-  };
-
-  const descendantIds = await collectDescendants(id);
-  const allCategoryIds = [id, ...descendantIds];
-
-  // Check for products assigned to any of the categories
-  const assignedProducts = await this.prisma.product.findMany({
-    where: { categoryId: { in: allCategoryIds } },
-    select: {
-      id: true,
-      sku: true,
-      title: true,
-      categoryId: true,
-    },
-    take: 10,
-  });
-
-  if (assignedProducts.length > 0) {
-    const preview = assignedProducts
-      .map(p => `#${p.id} (${p.sku}) (${p.title}) → Category #${p.categoryId}`)
-      .join(', ');
-
-    throw new BadRequestException(
-      ` Cannot delete: One or more categories (including children) are assigned to products: ${preview}. Please reassign them first.`
-    );
+    return result;
   }
 
-  // Delete children first (deepest first)
-  for (const childId of descendantIds.reverse()) {
-    await this.prisma.category.delete({ where: { id: childId } });
+  async toggleNeedHelpBuying(id: number, value: boolean) {
+    return this.prisma.category.update({
+      where: { id },
+      data: { showInNeedHelpBuying: !!value },
+    });
   }
 
-  // Delete main category
-  await this.prisma.category.delete({ where: { id } });
+  // ✅ returns subcategories flagged for “Need Help Buying”
+  async findHomeTabs() {
+    const categories = await this.prisma.category.findMany({
+      where: {
+        status: true,
+        showInHomeTabs: true,
+        parentId: null,
+      },
+      orderBy: [{ position: "asc" }, { title: "asc" }],
+      select: { id: true },
+    });
 
-  return {
-    message: 'Category deleted successfully',
-  };
-}
-
-// ✅ returns subcategories flagged for “Need Help Buying”
-async findNeedHelpBuying() {
-  const categories = await this.prisma.category.findMany({
-    where: {
-      status: true,
-      showInNeedHelpBuying: true,
-      NOT: { parentId: null },
-      
-    },
-    orderBy: [{ position: 'asc' }, { title: 'asc' }],
-    select: { id: true },
-  });
-
-  const result = [];
-  for (const cat of categories) {
-    const fullCategory = await this.getCategoryWithChildrenRecursive(cat.id);
-  if ('featureType' in fullCategory) {
-      delete fullCategory.featureType;
+    const result = [];
+    for (const cat of categories) {
+      const fullCategory = await this.getCategoryWithChildrenRecursive(cat.id);
+      if ("featureType" in fullCategory) {
+        delete fullCategory.featureType;
+      }
+      if ("filterType" in fullCategory) {
+        delete fullCategory.filterType;
+      }
+      if (fullCategory) result.push(fullCategory);
     }
-    if ('filterType' in fullCategory) {
-      delete fullCategory.filterType;
-    }
-    if (fullCategory) result.push(fullCategory);
+
+    return result;
   }
 
-  return result;
-}
-
-async toggleNeedHelpBuying(id: number, value: boolean) {
-  return this.prisma.category.update({
-    where: { id },
-    data: { showInNeedHelpBuying: !!value },
-  });
-
-  
-}
-
-
-
-// ✅ returns subcategories flagged for “Need Help Buying”
-async findHomeTabs() {
-  const categories = await this.prisma.category.findMany({
-    where: {
-      status: true,
-      showInHomeTabs: true,
-       parentId: null ,
-      
-    },
-    orderBy: [{ position: 'asc' }, { title: 'asc' }],
-    select: { id: true },
-  });
-
-  const result = [];
-  for (const cat of categories) {
-    const fullCategory = await this.getCategoryWithChildrenRecursive(cat.id);
-  if ('featureType' in fullCategory) {
-      delete fullCategory.featureType;
-    }
-    if ('filterType' in fullCategory) {
-      delete fullCategory.filterType;
-    }
-    if (fullCategory) result.push(fullCategory);
+  async toggleHomeTabs(id: number, value: boolean) {
+    return this.prisma.category.update({
+      where: { id },
+      data: { showInHomeTabs: !!value },
+    });
   }
-
-  return result;
-}
-
-async toggleHomeTabs(id: number, value: boolean) {
-  return this.prisma.category.update({
-    where: { id },
-    data: { showInHomeTabs: !!value },
-  });
-
-  
-}
-
-
 }

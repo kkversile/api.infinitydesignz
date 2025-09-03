@@ -10,6 +10,7 @@ import {
   UseInterceptors,
   UploadedFile,
   ParseIntPipe,
+  Query,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
@@ -18,6 +19,7 @@ import { SliderService } from './slider.service';
 import { CreateSliderDto } from './dto/create-slider.dto';
 import { UpdateSliderDto } from './dto/update-slider.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { StatusQueryDto } from '../common-status/dto/status-query.dto';
 
 
 @Controller('sliders')
@@ -25,8 +27,8 @@ export class SliderController {
   constructor(private readonly sliderService: SliderService) {}
 
   @Get()
-  async findAll() {
-    return this.sliderService.findAll();
+  findAll(@Query() { status }: StatusQueryDto) {
+    return this.sliderService.findAll(status);
   }
   
 @UseGuards(JwtAuthGuard)

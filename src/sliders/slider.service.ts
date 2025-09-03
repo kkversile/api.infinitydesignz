@@ -3,6 +3,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateSliderDto } from './dto/create-slider.dto';
 import { UpdateSliderDto } from './dto/update-slider.dto';
 import { SLIDERS_IMAGE_PATH } from '../config/constants';
+import { StatusFilter } from '../common-status/dto/status-query.dto';
+import { statusWhere } from '../common-status/utils/status-where';
 
 const formatImageUrl = (fileName: string | null) =>
   fileName ? `${SLIDERS_IMAGE_PATH}${fileName}` : null;
@@ -23,8 +25,9 @@ const normalizeStatus = (val: any): boolean => {
 export class SliderService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll() {
-    const sliders = await this.prisma.slider.findMany({
+  async findAll(status: StatusFilter = 'active') {
+    const sliders =  await this.prisma.slider.findMany({
+       where: statusWhere(status),
       orderBy: { priority: 'asc' },
     });
 

@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { StatusFilter } from '../common-status/dto/status-query.dto';
+import { statusWhere } from '../common-status/utils/status-where';
 
 @Injectable()
 export class FeatureSetService {
@@ -16,8 +18,9 @@ export class FeatureSetService {
   }
 
   /** List all FeatureSets with their FeatureType */
-  findAll() {
+  findAll(status: StatusFilter = 'active') {
     return this.prisma.featureSet.findMany({
+      where: statusWhere(status),
       include: { featureType: true },
       orderBy: { id: 'desc' },
     });

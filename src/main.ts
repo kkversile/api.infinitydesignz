@@ -18,7 +18,7 @@ app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
     credentials: true,
   });
 
-  const port = process.env.PORT || 4005;
+  const port = process.env.PORT || 4006;
   await app.listen(port, '0.0.0.0');
 
   console.log(`🚀 Server running on http://0.0.0.0:${port}`);

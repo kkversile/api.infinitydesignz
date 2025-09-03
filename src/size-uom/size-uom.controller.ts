@@ -1,9 +1,11 @@
 import {
-  Controller, Get, Post, Body, Param, Patch, Delete, UseGuards
+  Controller, Get, Post, Body, Param, Patch, Delete, UseGuards, Query
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { SizeUOMService } from './size-uom.service';
 import { parseBooleanStatus } from '../utils/validate-status'; // adjust path
+import { StatusQueryDto } from '../common-status/dto/status-query.dto';
+
 
 @Controller('size-uom')
 export class SizeUOMController {
@@ -18,9 +20,10 @@ export class SizeUOMController {
 
   @UseGuards(JwtAuthGuard)
   @Get()
-  findAll() {
-    return this.service.findAll();
+  findAll(@Query() { status }: StatusQueryDto) {
+    return this.service.findAll(status);
   }
+
 
   @UseGuards(JwtAuthGuard)
   @Get(':id')

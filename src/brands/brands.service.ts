@@ -1,5 +1,7 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { StatusFilter } from '../common-status/dto/status-query.dto';
+import { statusWhere } from '../common-status/utils/status-where';
 
 @Injectable()
 export class BrandsService {
@@ -24,11 +26,11 @@ export class BrandsService {
   }
 
   /** List all brands */
-  findAll() {
+ /** List brands with status filter */
+  findAll(status: StatusFilter = 'active') {
     return this.prisma.brand.findMany({
-      orderBy: {
-        id: 'desc',
-      },
+      where: statusWhere(status),
+      orderBy: { id: 'desc' },
     });
   }
 

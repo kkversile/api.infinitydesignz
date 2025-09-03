@@ -6,11 +6,13 @@ import {
   Param,
   Put,
   Delete,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { BrandsService } from './brands.service';
 import { parseBooleanStatus } from '../utils/validate-status'; // adjust path
+import { StatusQueryDto } from '../common-status/dto/status-query.dto';
 
 @Controller('brands')
 export class BrandsController {
@@ -25,8 +27,8 @@ export class BrandsController {
 
   @UseGuards(JwtAuthGuard)
   @Get()
-  findAll() {
-    return this.service.findAll();
+  findAll(@Query() q: StatusQueryDto) {
+    return this.service.findAll(q.status);
   }
 
   @UseGuards(JwtAuthGuard)

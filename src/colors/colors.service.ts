@@ -1,5 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { StatusFilter } from '../common-status/dto/status-query.dto';
+import { statusWhere } from '../common-status/utils/status-where';
 
 @Injectable()
 export class ColorsService {
@@ -24,11 +26,10 @@ export class ColorsService {
   }
 
   /** List all colors */
-  findAll() {
+  findAll(status: StatusFilter = 'active') {
     return this.prisma.color.findMany({
-      orderBy: {
-        id: 'desc',
-      },
+      where: statusWhere(status),
+      orderBy: { id: 'desc' },
     });
   }
 

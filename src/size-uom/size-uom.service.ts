@@ -1,5 +1,7 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { BadRequestException, Injectable } from "@nestjs/common";
+import { PrismaService } from "../prisma/prisma.service";
+import { StatusFilter } from "../common-status/dto/status-query.dto";
+import { statusWhere } from "../common-status/utils/status-where";
 
 @Injectable()
 export class SizeUOMService {
@@ -11,27 +13,26 @@ export class SizeUOMService {
     });
 
     if (existing) {
-      throw new BadRequestException(' Size UOM with this title already exists.');
+      throw new BadRequestException(
+        " Size UOM with this title already exists."
+      );
     }
 
     const result = await this.prisma.sizeUOM.create({ data });
-    return { message: 'Size UOM created successfully.', sizeUOM: result };
+    return { message: "Size UOM created successfully.", sizeUOM: result };
   }
 
-  async findAll() {
-    const result = await this.prisma.sizeUOM.findMany({
-      orderBy: {
-        id: 'desc',
-      },
+  findAll(status: StatusFilter = "active") {
+    return this.prisma.sizeUOM.findMany({
+      where: statusWhere(status),
+      orderBy: { id: "desc" },
     });
-
-    return result;
   }
 
   async findOne(id: number) {
     const result = await this.prisma.sizeUOM.findUnique({ where: { id } });
     if (!result) {
-      throw new BadRequestException(' Size UOM not found.');
+      throw new BadRequestException(" Size UOM not found.");
     }
     return result;
   }
@@ -46,7 +47,9 @@ export class SizeUOMService {
       });
 
       if (existing) {
-        throw new BadRequestException(' Another Size UOM with the same title already exists.');
+        throw new BadRequestException(
+          " Another Size UOM with the same title already exists."
+        );
       }
     }
 
@@ -55,16 +58,16 @@ export class SizeUOMService {
       data,
     });
 
-    return { message: 'Size UOM updated successfully.', sizeUOM: updated };
+    return { message: "Size UOM updated successfully.", sizeUOM: updated };
   }
 
   async remove(id: number) {
     const existing = await this.prisma.sizeUOM.findUnique({ where: { id } });
     if (!existing) {
-      throw new BadRequestException(' Size UOM not found for deletion.');
+      throw new BadRequestException(" Size UOM not found for deletion.");
     }
 
     await this.prisma.sizeUOM.delete({ where: { id } });
-    return { message: 'Size UOM deleted successfully.' };
+    return { message: "Size UOM deleted successfully." };
   }
 }
