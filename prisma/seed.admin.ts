@@ -5,7 +5,6 @@ const prisma = new PrismaClient();
 
 async function main() {
   const email = process.env.ADMIN_EMAIL?.trim() || 'admin@example.com';
-  const phone = process.env.ADMIN_PHONE?.trim() || '0000000000';
   const pwd = 'admin123'; // 🔑 Hard-coded reset password
 
   const hash = await bcrypt.hash(pwd, 12);
@@ -24,17 +23,7 @@ async function main() {
     return;
   }
 
-  // ✅ Otherwise create new admin
-  await prisma.user.create({
-    data: {
-      name: 'Administrator',
-      email,
-      phone,
-      role: 'ADMIN',
-      password: hash,
-      status: true,
-    },
-  });
+
 
   console.log(`Admin created with password '${pwd}' for email: ${email}`);
 }
