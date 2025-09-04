@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { StatusFilter } from '../common-status/dto/status-query.dto';
 import { statusWhere } from '../common-status/utils/status-where';
@@ -7,6 +7,21 @@ import { statusWhere } from '../common-status/utils/status-where';
 export class FilterSetService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // ── helpers (local) ─────────────────────────────────────────────
+  private toPosInt(v: any): number | undefined {
+    if (v === undefined || v === null || v === '') return undefined;
+    const n = Number(v);
+    if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) return undefined;
+    return n;
+  }
+  private normBool(v: any): boolean | undefined {
+    if (v === undefined) return undefined;
+    if (typeof v === 'boolean') return v;
+    if (v === 'true' || v === '1' || v === 1) return true;
+    if (v === 'false' || v === '0' || v === 0) return false;
+    return undefined;
+  }
+
   /** Create FilterSet */
   async create(data: {
     title: string;
@@ -14,12 +29,36 @@ export class FilterSetService {
     status?: boolean;
     filterTypeId: number;
   }) {
-    const filterSet = await this.prisma.filterSet.create({ data });
+    // FK-safe: validate filterTypeId and ensure FilterType exists
+    const filterTypeId = this.toPosInt(data.filterTypeId);
+    if (!filterTypeId) {
+      throw new BadRequestException('filterTypeId is required and must be a positive integer.');
+    }
+    const ft = await this.prisma.filterType.findUnique({ where: { id: filterTypeId } });
+    if (!ft) {
+      throw new BadRequestException(`FilterType ${filterTypeId} does not exist.`);
+    }
 
-    return {
-      message: 'Filter Set created successfully',
-      data: filterSet,
+    const payload: any = {
+      title: data.title?.trim(),
+      priority: Number(data.priority),
+      filterTypeId,
     };
+    const status = this.normBool(data.status);
+    if (status !== undefined) payload.status = status;
+
+    try {
+      const filterSet = await this.prisma.filterSet.create({ data: payload });
+      return {
+        message: 'Filter Set created successfully',
+        data: filterSet,
+      };
+    } catch (err: any) {
+      if (err?.code === 'P2003') {
+        throw new BadRequestException('Invalid filterTypeId: foreign key constraint failed');
+      }
+      throw err;
+    }
   }
 
   /** Get all FilterSets with their FilterType */
@@ -51,15 +90,44 @@ export class FilterSetService {
   }) {
     await this.findOne(id); // Ensure exists
 
-    const updated = await this.prisma.filterSet.update({
-      where: { id },
-      data,
-    });
+    // Only touch filterTypeId if provided; validate target exists
+    let nextFilterTypeId: number | undefined = undefined;
+    if ('filterTypeId' in data) {
+      const parsed = this.toPosInt(data.filterTypeId);
+      if (!parsed) {
+        throw new BadRequestException('filterTypeId must be a positive integer when provided.');
+      }
+      const exists = await this.prisma.filterType.findUnique({ where: { id: parsed } });
+      if (!exists) {
+        throw new BadRequestException(`FilterType ${parsed} does not exist (filterTypeId).`);
+      }
+      nextFilterTypeId = parsed;
+    }
 
-    return {
-      message: 'Filter Set updated successfully',
-      data: updated,
+    const payload: any = {
+      ...(data.title !== undefined && { title: data.title?.trim() }),
+      ...(data.priority !== undefined && { priority: Number(data.priority) }),
     };
+    const status = this.normBool(data.status);
+    if (status !== undefined) payload.status = status;
+    if (nextFilterTypeId !== undefined) payload.filterTypeId = nextFilterTypeId;
+
+    try {
+      const updated = await this.prisma.filterSet.update({
+        where: { id },
+        data: payload,
+      });
+
+      return {
+        message: 'Filter Set updated successfully',
+        data: updated,
+      };
+    } catch (err: any) {
+      if (err?.code === 'P2003') {
+        throw new BadRequestException('Invalid filterTypeId: foreign key constraint failed');
+      }
+      throw err;
+    }
   }
 
   /** Delete FilterSet + its FilterLists + ProductFilters */
@@ -72,7 +140,7 @@ export class FilterSetService {
       select: { id: true },
     });
 
-    const filterListIds = filterLists.map(list => list.id);
+    const filterListIds = filterLists.map((list) => list.id);
 
     if (filterListIds.length > 0) {
       //  Step 2: Delete related ProductFilters
