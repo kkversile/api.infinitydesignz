@@ -291,135 +291,183 @@ if (existingBySku) {
   }
 
   // UPDATE
-  async update(id: number, dto: UpdateProductsDto) {
-    const existing = await this.prisma.product.findUnique({ where: { id } });
-    if (!existing) throw new NotFoundException(`Product ${id} not found`);
+  // UPDATE
+async update(id: number, dto: UpdateProductsDto) {
+  const existing = await this.prisma.product.findUnique({ where: { id } });
+  if (!existing) throw new NotFoundException(`Product ${id} not found`);
 
-    const {
+  const {
+    sku,
+    title,
+    description,
+    brandId,
+    categoryId,
+    colorId,
+    sizeId,
+    stock,
+    mrp,
+    sellingPrice,
+    searchKeywords,
+    status,
+    productDetails,
+    variants = [],
+  } = dto;
+
+  if (sku) {
+    const dup = await this.prisma.product.findFirst({
+      where: { sku, NOT: { id } },
+    });
+    if (dup) throw new BadRequestException(`Another product with SKU '${sku}' exists.`);
+  }
+
+  // validate provided FKs (if present)
+  const checks = [
+    { id: brandId, label: "Brand", model: this.prisma.brand },
+    { id: categoryId, label: "Category", model: this.prisma.category },
+    { id: sizeId, label: "Size", model: this.prisma.sizeUOM },
+    { id: colorId, label: "Color", model: this.prisma.color },
+  ];
+  for (const { id: fkId, label, model } of checks) {
+    if (fkId && Number(fkId) > 0) {
+      const existsFk = await (model as any).findUnique({
+        where: { id: Number(fkId) },
+      });
+      if (!existsFk) {
+        throw new BadRequestException(`${label} with ID '${fkId}' does not exist.`);
+      }
+    }
+  }
+
+  // 1) Update product's own fields (NO nested variants here)
+  await this.prisma.product.update({
+    where: { id },
+    data: {
       sku,
       title,
       description,
-      brandId,
-      categoryId,
-      colorId,
-      sizeId,
+      searchKeywords,
+      status,
       stock,
       mrp,
       sellingPrice,
-      searchKeywords,
-      status,
-      productDetails,
-      variants = [],
-    } = dto;
 
-    if (sku) {
-      const dup = await this.prisma.product.findFirst({
-        where: { sku, NOT: { id } },
-      });
-      if (dup) throw new BadRequestException(`Another product with SKU '${sku}' exists.`);
-    }
+      ...(brandId && Number(brandId) > 0 && {
+        brand: { connect: { id: Number(brandId) } },
+      }),
+      ...(categoryId && Number(categoryId) > 0 && {
+        category: { connect: { id: Number(categoryId) } },
+      }),
+      ...(sizeId && Number(sizeId) > 0 && {
+        size: { connect: { id: Number(sizeId) } },
+      }),
+      ...(colorId && Number(colorId) > 0 && {
+        color: { connect: { id: Number(colorId) } },
+      }),
 
-    // validate provided FKs (if present)
-    const checks = [
-      { id: brandId, label: "Brand", model: this.prisma.brand },
-      { id: categoryId, label: "Category", model: this.prisma.category },
-      { id: sizeId, label: "Size", model: this.prisma.sizeUOM },
-      { id: colorId, label: "Color", model: this.prisma.color },
-    ];
-    for (const { id: fkId, label, model } of checks) {
-      if (fkId && Number(fkId) > 0) {
-        const exists = await (model as any).findUnique({
-          where: { id: Number(fkId) },
-        });
-        if (!exists) {
-          throw new BadRequestException(`${label} with ID '${fkId}' does not exist.`);
-        }
-      }
-    }
-
-    const updated = await this.prisma.product.update({
-      where: { id },
-      data: {
-        sku,
-        title,
-        description,
-        searchKeywords,
-        status,
-        stock,
-        mrp,
-        sellingPrice,
-
-        ...(brandId && Number(brandId) > 0 && {
-          brand: { connect: { id: Number(brandId) } },
-        }),
-        ...(categoryId && Number(categoryId) > 0 && {
-          category: { connect: { id: Number(categoryId) } },
-        }),
-        ...(sizeId && Number(sizeId) > 0 && {
-          size: { connect: { id: Number(sizeId) } },
-        }),
-        ...(colorId && Number(colorId) > 0 && {
-          color: { connect: { id: Number(colorId) } },
-        }),
-
-        productDetails: productDetails
-          ? {
-              upsert: {
-                create: {
-                  model: productDetails.model,
-                  weight: productDetails.weight,
-                  sla: productDetails.sla,
-                  deliveryCharges: productDetails.deliveryCharges,
-                },
-                update: {
-                  model: productDetails.model,
-                  weight: productDetails.weight,
-                  sla: productDetails.sla,
-                  deliveryCharges: productDetails.deliveryCharges,
-                },
+      productDetails: productDetails
+        ? {
+            upsert: {
+              create: {
+                model: productDetails.model,
+                weight: productDetails.weight,
+                sla: productDetails.sla,
+                deliveryCharges: productDetails.deliveryCharges,
               },
-            }
-          : undefined,
+              update: {
+                model: productDetails.model,
+                weight: productDetails.weight,
+                sla: productDetails.sla,
+                deliveryCharges: productDetails.deliveryCharges,
+              },
+            },
+          }
+        : undefined,
+    },
+  });
 
-        variants: variants.length
-          ? {
-              deleteMany: {}, // replace variants
-              create: variants.map((v) => ({
-                sku: v.sku,
-                stock: v.stock,
-                mrp: v.mrp,
-                sellingPrice: v.sellingPrice,
-                ...(v.sizeId && Number(v.sizeId) > 0 && {
-                  size: { connect: { id: Number(v.sizeId) } },
-                }),
-                ...(v.colorId && Number(v.colorId) > 0 && {
-                  color: { connect: { id: Number(v.colorId) } },
-                }),
-              })),
-            }
-          : undefined,
-      },
+  // 2) Promotions (unchanged)
+  const { mainCategoryPromotionIds } = dto as any;
+  if (Array.isArray(mainCategoryPromotionIds)) {
+    await this.prisma.productMainCategoryPromotion.deleteMany({
+      where: { productId: id },
     });
-
-    // NEW: replace promotion links if provided
-    const { mainCategoryPromotionIds } = dto as any;
-    if (Array.isArray(mainCategoryPromotionIds)) {
-      await this.prisma.productMainCategoryPromotion.deleteMany({
-        where: { productId: id },
+    if (mainCategoryPromotionIds.length) {
+      await this.prisma.productMainCategoryPromotion.createMany({
+        data: mainCategoryPromotionIds.map((mcpId: number) => ({
+          productId: id,
+          mainCategoryPromotionId: Number(mcpId),
+        })),
+        skipDuplicates: true,
       });
-      if (mainCategoryPromotionIds.length) {
-        await this.prisma.productMainCategoryPromotion.createMany({
-          data: mainCategoryPromotionIds.map((mcpId: number) => ({
-            productId: id,
-            mainCategoryPromotionId: Number(mcpId),
-          })),
-          skipDuplicates: true,
-        });
-      }
+    }
+  }
+
+  // 3) Variants sync (update in place; create new; delete only missing)
+  await this.prisma.$transaction(async (tx) => {
+    const existingVariants = await tx.variant.findMany({
+      where: { productId: id },
+      select: { id: true },
+    });
+    const existingIds = existingVariants.map((v) => v.id);
+
+    const incomingWithId = (variants || []).filter((v: any) => v.id);
+    const incomingIds = incomingWithId.map((v: any) => Number(v.id));
+    const incomingWithoutId = (variants || []).filter((v: any) => !v.id);
+console.log('incomingWithoutId',incomingWithoutId);
+console.log('incomingWithId',incomingWithId);
+    // A) UPDATE in place for all items that have an id (even if SKU changed)
+    for (const v of incomingWithId) {
+      await tx.variant.update({
+        where: { id: Number(v.id) },
+        data: {
+          sku: v.sku,
+          stock: v.stock,
+          mrp: v.mrp,
+          sellingPrice: v.sellingPrice,
+          ...(v.sizeId && Number(v.sizeId) > 0
+            ? { size: { connect: { id: Number(v.sizeId) } } }
+            : {}),
+          ...(v.colorId && Number(v.colorId) > 0
+            ? { color: { connect: { id: Number(v.colorId) } } }
+            : {}),
+        },
+      });
     }
 
-    return { message: "Product updated successfully", data: updated };
-  }
+    // B) CREATE any brand-new variants (no id)
+    for (const v of incomingWithoutId) {
+      await tx.variant.create({
+        data: {
+          product: { connect: { id } },
+          sku: v.sku,
+          stock: v.stock,
+          mrp: v.mrp,
+          sellingPrice: v.sellingPrice,
+          ...(v.sizeId && Number(v.sizeId) > 0
+            ? { size: { connect: { id: Number(v.sizeId) } } }
+            : {}),
+          ...(v.colorId && Number(v.colorId) > 0
+            ? { color: { connect: { id: Number(v.colorId) } } }
+            : {}),
+        },
+      });
+    }
+
+    // C) DELETE only those existing ids that are NOT present in the payload
+    const toDelete = existingIds.filter((oldId) => !incomingIds.includes(oldId));
+    console.log(toDelete);
+    if (toDelete.length) {
+      // If you also want to remove their images, do it here before deleteMany.
+      // Otherwise, with FK = SET NULL, their images will become variantId = NULL.
+      await tx.variant.deleteMany({ where: { id: { in: toDelete } } });
+    }
+  });
+
+  // 4) Return fresh shape (same as GET)
+  const fresh = await this.findOne(id);
+  return { message: "Product updated successfully", data: fresh };
+}
+
 
   // DELETE
   async remove(id: number) {

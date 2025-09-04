@@ -24,25 +24,39 @@ class ProductDetailsDto {
   deliveryCharges?: number;
 }
 
-class VariantDto {
+
+export class VariantDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  id?: number;
+
   @IsString()
-  sku!: string;
+  sku: string;
 
-  @IsInt() @Min(0)
-  stock!: number;
-
+  @Type(() => Number)
   @IsNumber()
-  mrp!: number;
+  stock: number;
 
+  @Type(() => Number)
   @IsNumber()
-  sellingPrice!: number;
+  mrp: number;
 
-  @IsOptional() @IsInt() @Min(1)
+  @Type(() => Number)
+  @IsNumber()
+  sellingPrice: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
   sizeId?: number;
 
-  @IsOptional() @IsInt() @Min(1)
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
   colorId?: number;
 }
+
 
 export class CreateProductsDto {
   @IsString()
