@@ -2,6 +2,7 @@
 
 import { Module } from '@nestjs/common';
 import { join } from 'path';
+import { MulterModule } from '@nestjs/platform-express';
 
 import { PrismaModule } from './prisma/prisma.module'; 
 import { AuthModule } from './auth/auth.module';
@@ -45,7 +46,14 @@ import { HomeCategoriesModule } from './home-categories/home-categories.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 @Module({
   imports: [      
-
+ MulterModule.register({
+      limits: {
+        fileSize: 25 * 1024 * 1024, // 25MB per file
+        files: 20,                  // up to 20 files per request
+        fields: 50,                 // max non-file fields
+        fieldSize: 2 * 1024 * 1024, // 2MB per text field in multipart
+      },
+    }),
     PrismaModule,
     AuthModule,
     BrandsModule,
