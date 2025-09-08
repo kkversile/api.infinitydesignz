@@ -554,6 +554,7 @@ model Order {
   addressId     Int
   paymentMethod PaymentMethod
   couponId      Int?
+  couponDiscount Float        @default(0)
   status        OrderStatus   @default(PENDING)
   subtotal      Float
   shippingFee   Float

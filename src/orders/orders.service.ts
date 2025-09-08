@@ -142,13 +142,19 @@ async placeOrder(dto: CreateOrderDto, userId: number) {
     }
   }
 
-  // Create order
+  // --- compute final coupon discount (capped to [0, subtotal]) ---
+const safeDiscount_place = Math.max(
+  0,
+  Math.min(Number((dto as any).couponDiscount) || 0, Number(subtotal) || 0)
+);
+// Create order
   const order = await this.prisma.order.create({
     data: {
       user: { connect: { id: userId } },
       address: { connect: { id: addressId } },
       paymentMethod: paymentMethod ?? 'COD',
       coupon: couponId ? { connect: { id: couponId } } : undefined,
+      couponDiscount: safeDiscount_place,
       subtotal,
       shippingFee,
       gst,
@@ -170,13 +176,24 @@ async placeOrder(dto: CreateOrderDto, userId: number) {
         },
       },
     },
-    include: {
-      items: true,
-      payment: true,
-    },
-  });
+      include: {
+    items: true,
+    payment: true,
+  },
+});
 
-  return order;
+// Mark coupon usage (optional snapshot) for future validation
+if (couponId) {
+  try {
+    await this.prisma.appliedCoupon.upsert({
+      where: { userId_couponId: { userId, couponId } },
+      create: { userId, couponId, orderId: order.id },
+      update: { orderId: order.id },
+    });
+  } catch {}
+}
+
+return order;
 }
 
 
@@ -223,22 +240,16 @@ async listOrders(params: ListOrdersParams = {}) {
   const AND: any[] = [];
 
   // Delivery Status (Order.status)
-  if (status) {
-    AND.push({ status });
-  }
+  if (status) AND.push({ status });
 
   // Payment Status
-  if (paymentStatus) {
-    AND.push({ payment: { is: { status: paymentStatus } } });
-  }
+  if (paymentStatus) AND.push({ payment: { is: { status: paymentStatus } } });
 
   // Order ID search
   if (orderId && orderId.trim()) {
     const raw = orderId.trim().toUpperCase();
     const numeric = Number(raw.replace(/^ORD/, ''));
-    if (!Number.isNaN(numeric)) {
-      AND.push({ id: numeric });
-    }
+    if (!Number.isNaN(numeric)) AND.push({ id: numeric });
   }
 
   // Date filter
@@ -255,17 +266,11 @@ async listOrders(params: ListOrdersParams = {}) {
 
   // Active/Inactive
   if (typeof active === 'boolean') {
-    if (active) {
-      AND.push({ NOT: { status: 'CANCELLED' as const } });
-    } else {
-      AND.push({ status: 'CANCELLED' as const });
-    }
+    AND.push(active ? { NOT: { status: 'CANCELLED' as const } } : { status: 'CANCELLED' as const });
   }
 
   // Order From
-  if (orderFrom) {
-    AND.push({ orderFrom });
-  }
+  if (orderFrom) AND.push({ orderFrom });
 
   const where = AND.length ? { AND } : undefined;
 
@@ -276,7 +281,7 @@ async listOrders(params: ListOrdersParams = {}) {
   // Total count
   const total = await this.prisma.order.count({ where });
 
-  // Fetch data
+  // Fetch data (scalar fields come by default; we include relations we need)
   const rows = await this.prisma.order.findMany({
     where,
     include: {
@@ -301,6 +306,8 @@ async listOrders(params: ListOrdersParams = {}) {
       orderFrom: o.orderFrom,
       paymentStatus: o.payment?.status ?? null,
       status: o.status,
+      // 👇 Added field
+      couponDiscount: Number(o.couponDiscount) || 0,
     };
   });
 
@@ -432,14 +439,19 @@ async getOrderDetails(orderId: number) {
   const platformFee = 20;
   const shippingFee = Number(order.shippingFee) || 0;
 
-  // Derive coupon discount from stored totals
+  // Prefer stored couponDiscount snapshot; fall back to recomputing from totals for legacy orders
   const storedFinal = Number(order.totalAmount) || 0;
-  let couponDiscount = totalSellingPrice + platformFee + shippingFee - storedFinal;
-  if (!order.coupon) couponDiscount = 0;
+  let couponDiscount = 0;
+if (order.coupon && typeof (order as any).couponDiscount === 'number') {
+  couponDiscount = Math.max(0, Math.min(totalSellingPrice, Number((order as any).couponDiscount) || 0));
+} else {
+  // Legacy fallback: infer from totals
+  couponDiscount = totalSellingPrice + platformFee + shippingFee - storedFinal;
   couponDiscount = Math.max(
     0,
     Math.min(totalSellingPrice, Math.round(couponDiscount * 100) / 100)
   );
+}
 
   return {
     id: order.id,
@@ -564,12 +576,16 @@ if (couponId != null) { // covers undefined & null
   couponConnect = { connect: { id } };
 }
 
-  // Create order
+  // --- compute final coupon discount (capped to [0, subtotal]) ---
+const safeDiscount_place = Math.max(0, Math.min(Number((dto as any).couponDiscount) || 0, Number(subtotal) || 0));
+
+// Create order
   const order = await this.prisma.order.create({
     data: {
       user: { connect: { id: userId } },
       address: { connect: { id: addressId } },
       paymentMethod: 'COD',
+      couponDiscount: safeDiscount,
       coupon: couponConnect,                 // only connects if verified above
       subtotal,
       shippingFee,
@@ -589,10 +605,20 @@ if (couponId != null) { // covers undefined & null
         create: { method: 'COD', status: 'PENDING' },
       },
     },
-    include: { items: true, payment: true },
-  });
+      include: { items: true, payment: true },
+});
 
-  // Decrement stock
+if (couponId) {
+  try {
+    await this.prisma.appliedCoupon.upsert({
+      where: { userId_couponId: { userId, couponId } },
+      create: { userId, couponId, orderId: order.id },
+      update: { orderId: order.id },
+    });
+  } catch {}
+}
+
+// Decrement stock
   if (variant) {
     await this.prisma.variant.update({
       where: { id: variant.id },

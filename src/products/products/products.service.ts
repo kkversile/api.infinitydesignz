@@ -935,6 +935,23 @@ async getProductDetails(productId: number, variantId?: number) {
       variants: { include: { size: true, color: true } },
       images: true,
       category: true,
+      // bring enough info to group like the screenshot
+      features: {
+        include: {
+          featureList: {
+            select: {
+              id: true,
+              label: true, // e.g. "Model Name"
+              featureSet: {
+                select: {
+                  id: true,
+                  title: true, // e.g. "GENERAL", "BODY FEATURES"
+                },
+              },
+            },
+          },
+        },
+      },
     },
   });
 
@@ -1011,11 +1028,37 @@ async getProductDetails(productId: number, variantId?: number) {
       ? Math.max(...rp.variants.map((vv: any) => pct(vv.mrp, vv.sellingPrice)))
       : 0;
     const rpBadge = Math.max(rpProductPct, rpVarMaxPct);
-    return {
-      ...rp,
-      badgeDiscountPercent: rpBadge,
-    };
+    return { ...rp, badgeDiscountPercent: rpBadge };
   });
+
+  // ===== Group features by FeatureSet (section -> rows) =====
+  // featureSets: [{ setId, setTitle, rows: [{ listId, label, value }] }]
+  const setsMap = new Map<
+    number,
+    { setId: number; setTitle: string; rows: { listId: number; label: string; value: string | null }[] }
+  >();
+
+  for (const pf of product.features ?? []) {
+    const fl: any = (pf as any).featureList;           // { id, label, featureSet }
+    const fs: any = fl?.featureSet;                    // { id, title }
+    if (!fs) continue;
+
+    if (!setsMap.has(fs.id)) {
+      setsMap.set(fs.id, { setId: fs.id, setTitle: fs.title, rows: [] });
+    }
+    setsMap.get(fs.id)!.rows.push({
+      listId: fl.id,
+      label: fl.label,
+      value: (pf as any).value ?? null,
+    });
+  }
+
+  const featureSets = Array.from(setsMap.values())
+    .map((s) => ({
+      ...s,
+      rows: s.rows.sort((a, b) => a.label.localeCompare(b.label)),
+    }))
+    .sort((a, b) => a.setTitle.localeCompare(b.setTitle));
 
   return {
     ...product,
@@ -1029,7 +1072,7 @@ async getProductDetails(productId: number, variantId?: number) {
       variants: variantImagesMap, // e.g. { "226": { main, additional }, ... }
     },
 
-    // ✅ NEW discount fields at product level
+    // discount fields at product level
     productDiscountPercent,
     maxVariantDiscountPercent,
     badgeDiscountPercent,
@@ -1040,8 +1083,12 @@ async getProductDetails(productId: number, variantId?: number) {
 
     // related with discount badge
     relatedProducts,
+
+    // 👇 grouped sections for UI (like the screenshot)
+    featureSets,
   };
 }
+
 
 
 }

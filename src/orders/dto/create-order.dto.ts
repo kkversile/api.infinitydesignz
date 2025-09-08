@@ -37,6 +37,10 @@ export class CreateOrderDto {
   @IsInt()
   couponId?: number;
 
+  @IsOptional()
+  @IsInt()
+  couponDiscount?: number;
+
   @IsString()
   paymentMethod: string; // e.g. "COD"
 
