@@ -16,14 +16,11 @@ import {
 
 const formatImage = (fn: string | null) =>
   fn ? `${CATEGORY_IMAGE_PATH}${fn}` : null;
-const formatCategoryResponse = (
-  c: any
-) => ({
+const formatCategoryResponse = (c: any) => ({
   ...c,
   mainImage: formatImage(c.mainImage),
   appIcon: formatImage(c.appIcon),
   webImage: formatImage(c.webImage),
- 
 });
 const normalizeBool = (val: any): boolean | undefined => {
   if (val === undefined || val === null) return undefined;
@@ -35,34 +32,39 @@ const normalizeBool = (val: any): boolean | undefined => {
 @Injectable()
 export class CategoriesService {
   constructor(private prisma: PrismaService) {}
- /** Recursive helper to fetch children of a category (now includes slug for every node) */
-private async getCategoryWithChildrenRecursive(id: number): Promise<any> {
-  const category = await this.prisma.category.findUnique({
-    where: { id },
-    include: {
-      children: true,
-      featureType: { include: { featureSets: { include: { featureLists: true } } } },
-      filterType:  { include: { filterSets: { include: { filterLists: true } } } },
-    },
-  });
+  /** Recursive helper to fetch children of a category (now includes slug for every node) */
+  private async getCategoryWithChildrenRecursive(id: number): Promise<any> {
+    const category = await this.prisma.category.findUnique({
+      where: { id },
+      include: {
+        children: true,
+        featureType: {
+          include: { featureSets: { include: { featureLists: true } } },
+        },
+        filterType: {
+          include: { filterSets: { include: { filterLists: true } } },
+        },
+      },
+    });
 
-  if (!category) return null;
+    if (!category) return null;
 
-  // compute full chain slug for THIS node (e.g. /main/sub/list-<id>)
-  const slug = await buildSlugFromId(this.prisma, category.id);
+    // compute full chain slug for THIS node (e.g. /main/sub/list-<id>)
+    const slug = await buildSlugFromId(this.prisma, category.id);
 
-  // recurse so that each child also gets its own slug
-  const children = await Promise.all(
-    category.children.map((child) => this.getCategoryWithChildrenRecursive(child.id))
-  );
+    // recurse so that each child also gets its own slug
+    const children = await Promise.all(
+      category.children.map((child) =>
+        this.getCategoryWithChildrenRecursive(child.id)
+      )
+    );
 
-  return {
-    ...formatCategoryResponse(category),
-    slug,
-    children,
-  };
-}
-
+    return {
+      ...formatCategoryResponse(category),
+      slug,
+      children,
+    };
+  }
 
   /** Create a leaf category with direct FeatureType/FilterType FKs */
   async create(data: any, files: any = {}) {
@@ -128,7 +130,7 @@ private async getCategoryWithChildrenRecursive(id: number): Promise<any> {
     });
 
     // build map for slug building
-  
+
     const formatted = categories.map((c) => ({
       ...formatCategoryResponse(c),
       children: [],
@@ -150,7 +152,15 @@ private async getCategoryWithChildrenRecursive(id: number): Promise<any> {
       result.push(cat);
     }
 
-    return result;
+    // Attach slug to every returned node
+    const withSlugs = await Promise.all(
+      result.map(async (cat) => ({
+        ...cat,
+        slug: await buildSlugFromId(this.prisma, cat.id),
+      }))
+    );
+
+    return withSlugs;
   }
 
   /** Fetch one category (with its tree) plus its FeatureType & FilterType hierarchy */
@@ -379,7 +389,7 @@ private async getCategoryWithChildrenRecursive(id: number): Promise<any> {
       if ("filterType" in fullCategory) {
         delete fullCategory.filterType;
       }
-       const slug = await buildSlugFromId(this.prisma, cat.id);
+      const slug = await buildSlugFromId(this.prisma, cat.id);
       if (fullCategory) {
         result.push({
           ...formatCategoryResponse(fullCategory),
