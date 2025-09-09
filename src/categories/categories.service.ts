@@ -9,14 +9,22 @@ import { PrismaService } from "../prisma/prisma.service";
 import { CATEGORY_IMAGE_PATH } from "../config/constants";
 import { StatusFilter } from "../common-status/dto/status-query.dto";
 import { statusWhere } from "../common-status/utils/status-where";
+import {
+  buildCategorySlugFromMap,
+  buildSlugFromId,
+} from "../common/utils/category-slug.util";
 
 const formatImage = (fn: string | null) =>
   fn ? `${CATEGORY_IMAGE_PATH}${fn}` : null;
-const formatCategoryResponse = (c: any) => ({
+const formatCategoryResponse = (
+  c: any,
+  map?: Map<number, { id: number; title: string; parentId: number | null }>
+) => ({
   ...c,
   mainImage: formatImage(c.mainImage),
   appIcon: formatImage(c.appIcon),
   webImage: formatImage(c.webImage),
+  slug: map ? buildCategorySlugFromMap(c.id, map) : undefined,
 });
 const normalizeBool = (val: any): boolean | undefined => {
   if (val === undefined || val === null) return undefined;
@@ -118,8 +126,13 @@ export class CategoriesService {
       orderBy: { id: "desc" },
     });
 
+    // build map for slug building
+    const map = new Map<number, any>();
+    categories.forEach((c) =>
+      map.set(c.id, { id: c.id, title: c.title, parentId: c.parentId })
+    );
     const formatted = categories.map((c) => ({
-      ...formatCategoryResponse(c),
+      ...formatCategoryResponse(c, map),
       children: [],
     }));
 
@@ -313,7 +326,7 @@ export class CategoriesService {
         NOT: { parentId: null },
       },
       orderBy: [{ position: "asc" }, { title: "asc" }],
-      select: { id: true },
+      select: { id: true, title: true, parentId: true },
     });
 
     const result = [];
@@ -325,7 +338,13 @@ export class CategoriesService {
       if ("filterType" in fullCategory) {
         delete fullCategory.filterType;
       }
-      if (fullCategory) result.push(fullCategory);
+      const slug = await buildSlugFromId(this.prisma, cat.id);
+      if (fullCategory) {
+        result.push({
+          ...formatCategoryResponse(fullCategory),
+          slug,
+        });
+      }
     }
 
     return result;
@@ -347,9 +366,9 @@ export class CategoriesService {
         parentId: null,
       },
       orderBy: [{ position: "asc" }, { title: "asc" }],
-      select: { id: true },
+      select: { id: true, title: true, parentId: true },
     });
-
+    
     const result = [];
     for (const cat of categories) {
       const fullCategory = await this.getCategoryWithChildrenRecursive(cat.id);
@@ -359,7 +378,13 @@ export class CategoriesService {
       if ("filterType" in fullCategory) {
         delete fullCategory.filterType;
       }
-      if (fullCategory) result.push(fullCategory);
+       const slug = await buildSlugFromId(this.prisma, cat.id);
+      if (fullCategory) {
+        result.push({
+          ...formatCategoryResponse(fullCategory),
+          slug,
+        });
+      }
     }
 
     return result;

@@ -2,6 +2,8 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateMainProductPromotionDto } from './dto/create-main-product-promotion.dto';
 import { UpdateMainProductPromotionDto } from './dto/update-main-product-promotion.dto';
+import { buildSlugFromId } from '../common/utils/category-slug.util';
+
 import { MAIN_PRODUCT_PROMOTION_IMAGE_PATH, MAIN_CATEGORY_PROMOTION_IMAGE_PATH } from '../config/constants';
 
 
@@ -262,28 +264,13 @@ export class MainProductPromotionService {
     }
   }
 
-  // Add at top with your other imports
-
-/**
- * Aggregated list for frontend:
- * - Active Home Category Promotions (priority ASC)
- * - Each with Active Product Promotions (priority ASC)
- * - Optionally include a small product list per promotion
- */
-/**
- * Aggregated list for frontend:
- * - Active MainCategoryPromotions (priority ASC)
- * - Each with:
- *    - promotions: Active MainProductPromotions (priority ASC)
- *    - productPromotionList: Products linked to THIS category promotion (via ProductMainCategoryPromotion)
- */
-/**
+  /**
  * Aggregated list for frontend:
  * - Active MainCategoryPromotions (priority ASC)
  * - Each item contains:
- *    - promotions: active MainProductPromotions (priority ASC)
- *    - productPromotionList (peer): products linked to THIS category promotion
- *      with FULL product details (same include as searchProducts)
+ *    - promotions: active MainProductPromotions (priority ASC) with categorySlug
+ *    - productPromotionList: products linked to THIS category promotion
+ *      (full product rows) + each product.category.slug
  */
 async getAllPromotionsAggregate(
   opts: { includeProducts?: boolean; productsLimit?: number } = {},
@@ -300,7 +287,7 @@ async getAllPromotionsAggregate(
       displayCount: true,
       priority: true,
       imageUrl: true,
-      showTitle:true,
+      showTitle: true,
       mainProductPromotions: {
         where: { status: true },
         orderBy: { priority: 'asc' },
@@ -326,19 +313,26 @@ async getAllPromotionsAggregate(
 
   const items = await Promise.all(
     categories.map(async (c) => {
-      // Format promo image URLs
-      const promotions = c.mainProductPromotions.map((p) => ({
-        ...p,
-        imageUrl: img(MAIN_PRODUCT_PROMOTION_IMAGE_PATH, p.imageUrl),
-      }));
+      // ---------- Promotions (with categorySlug) ----------
+      const promotions = await Promise.all(
+        c.mainProductPromotions.map(async (p) => {
+          const categorySlug = p.categoryId
+            ? await buildSlugFromId(this.prisma, p.categoryId)
+            : null;
 
-      // CATEGORY-LEVEL product list (peer of promotions) — FULL product details
-      let productPromotionList:
-        | Array<any>
-        | undefined = undefined;
+          return {
+            ...p,
+            imageUrl: img(MAIN_PRODUCT_PROMOTION_IMAGE_PATH, p.imageUrl),
+            categorySlug, // ← e.g. "/luxury/home-office/office-chairs-247"
+          };
+        })
+      );
+
+      // ---------- Category-level product list (peer of promotions) ----------
+      let productPromotionList: Array<any> | undefined = undefined;
 
       if (includeProducts) {
-        // read links from the join table to be exact
+        // Read links from the join table to be exact
         const links = await this.prisma.productMainCategoryPromotion.findMany({
           where: { mainCategoryPromotionId: c.id },
           orderBy: { createdAt: 'desc' },
@@ -351,14 +345,16 @@ async getAllPromotionsAggregate(
             ? Math.min(c.displayCount, hardLimit)
             : hardLimit;
 
-        productPromotionList = productIds.length
+        const products = productIds.length
           ? await this.prisma.product.findMany({
               where: { id: { in: productIds }, status: true },
               orderBy: { createdAt: 'desc' },
               take,
               include: {
                 brand: true,
-                category: { include: { parent: { include: { parent: true } } } },
+                // parent->parent is still fetched for other UI needs,
+                // but slug will be built via helper to guarantee full chain.
+                category: { select: { id: true, title: true, parentId: true } },
                 variants: { include: { size: true, color: true } },
                 images: true,
                 filters: true,
@@ -366,6 +362,18 @@ async getAllPromotionsAggregate(
               },
             })
           : [];
+
+        // Attach slug to each product's category
+        productPromotionList = await Promise.all(
+          products.map(async (p) => {
+            let categoryWithSlug = p.category as any;
+            if (categoryWithSlug) {
+              const slug = await buildSlugFromId(this.prisma, categoryWithSlug.id);
+              categoryWithSlug = { ...categoryWithSlug, slug };
+            }
+            return { ...p, category: categoryWithSlug };
+          })
+        );
       }
 
       return {
@@ -375,8 +383,8 @@ async getAllPromotionsAggregate(
         showTitle: c.showTitle === null ? true : Boolean(c.showTitle),
         priority: c.priority,
         imageUrl: img(MAIN_CATEGORY_PROMOTION_IMAGE_PATH, c.imageUrl),
-        promotions,
-        productPromotionList, // ← full product rows (same include as searchProducts)
+        promotions,           // each item now has categorySlug
+        productPromotionList, // product.category now includes slug
       };
     }),
   );
