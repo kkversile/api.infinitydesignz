@@ -10,6 +10,7 @@ import { BuyNowDto } from "./dto/buy-now.dto";
 // orders.service.ts
 import { OrderStatus, PaymentStatus,OrderItemStatus  } from '@prisma/client';
 import { UpdateOrderItemDto, RequestCancelItemDto } from './dto/update-order-item.dto';
+import { PRODUCT_IMAGE_PATH } from '../config/constants';
 const ORDER_FINAL_STATES: OrderStatus[] = ['DELIVERED', 'CANCELLED'] as any;
 
 type UpdateOrderPayload =
@@ -63,6 +64,8 @@ function normalizeItems(input: unknown): IncomingOrderItem[] {
   return [];
 }
 
+const formatImageUrl = (fileName: string | null) =>
+  fileName ? `${PRODUCT_IMAGE_PATH}${fileName}` : null;
 
 @Injectable()
 export class OrdersService {
@@ -213,15 +216,147 @@ return order;
 }
 
 
-  async listUserOrders(userId: number) {
-    return this.prisma.order.findMany({
-      where: { userId },
-      include: {
-        items: true,
+async listUserOrders(userId: number) {
+  // Fetch user's orders with product/variant info needed for both display and related-products
+  const orders = await this.prisma.order.findMany({
+    where: { userId },
+    include: {
+      items: {
+        include: {
+          product: {
+            include: {
+              brand:  { select: { name: true } },
+              images: { where: { isMain: true }, select: { url: true, alt: true } },
+              color:  { select: { label: true } },
+              size:   { select: { title: true } },
+              category: { select: { id: true, parentId: true } },
+            },
+          },
+          variant: {
+            include: {
+              images: { where: { isMain: true }, select: { url: true, alt: true } },
+              color:  { select: { label: true } },
+              size:   { select: { title: true } },
+            },
+          },
+        },
       },
-      orderBy: { createdAt: "desc" },
-    });
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  // Collect purchased product IDs and category IDs
+  const purchasedProductIds: number[] = [];
+  const categoryIds: number[] = [];
+
+  for (const ord of orders) {
+    for (const it of ord.items as any[]) {
+      if (it.productId) purchasedProductIds.push(it.productId);
+      const catId = it.product?.category?.id;
+      if (catId) categoryIds.push(catId);
+    }
   }
+
+  // Derive sibling categories to broaden "related" pool
+  const siblingCategoryIds: number[] = [];
+  const uniqueCatIds = Array.from(new Set(categoryIds));
+  for (const catId of uniqueCatIds) {
+    const cat = await (this.prisma as any).category.findUnique({ where: { id: catId } });
+    if (cat?.parentId) {
+      const siblings = await (this.prisma as any).category.findMany({
+        where: { parentId: cat.parentId },
+        select: { id: true },
+      });
+      siblingCategoryIds.push(...siblings.map((s: any) => s.id));
+    } else if (cat?.id) {
+      // If no parent, consider children categories as related
+      const children = await (this.prisma as any).category.findMany({
+        where: { parentId: cat.id },
+        select: { id: true },
+      });
+      siblingCategoryIds.push(...children.map((c: any) => c.id));
+    }
+  }
+
+  const uniqueSiblingIds = Array.from(new Set(siblingCategoryIds));
+
+  // Pull related products excluding those already purchased
+  const relatedRaw = uniqueSiblingIds.length
+    ? await this.prisma.product.findMany({
+        where: {
+          status: true,
+          id: { notIn: purchasedProductIds.length ? Array.from(new Set(purchasedProductIds)) : undefined },
+          OR: [
+            { categoryId: { in: uniqueSiblingIds } },
+            { category: { parentId: { in: uniqueSiblingIds } } },
+          ],
+        },
+        include: {
+          brand:  { select: { name: true } },
+          images: { where: { isMain: true }, select: { url: true, alt: true } },
+          color:  { select: { label: true } },
+          size:   { select: { title: true } },
+        },
+        take: 20,
+        orderBy: { createdAt: 'desc' },
+      })
+    : [];
+
+  const relatedProducts = (relatedRaw as any[]).map((p) => {
+    const main = p.images?.[0]?.url ?? null;
+    return {
+      id: p.id,
+      title: p.title,
+      brand: p.brand?.name ?? null,
+      price: p.sellingPrice,
+      mrp: p.mrp,
+      color: p.color?.label ?? null,
+      size: p.size?.title ?? null,
+      imageUrl: formatImageUrl(main),
+      imageAlt: p.images?.[0]?.alt ?? '',
+    };
+  });
+
+  // Shape orders list with lightweight item product info
+  const shapedOrders = orders.map((ord: any) => ({
+    id: ord.id,
+    status: ord.status,
+    paymentStatus: ord.payment?.status ?? null,
+    createdAt: ord.createdAt,
+    total: ord.totalAmount ?? ord.total ?? null,
+    items: (ord.items || []).map((it: any) => {
+      const useVariant = !!it.variantId && it.variant;
+      const mainImage = useVariant
+        ? it.variant?.images?.[0]?.url || it.product?.images?.[0]?.url || null
+        : it.product?.images?.[0]?.url || null;
+      const imageAlt = useVariant
+        ? it.variant?.images?.[0]?.alt || it.product?.images?.[0]?.alt || ''
+        : it.product?.images?.[0]?.alt || '';
+
+      return {
+        id: it.id,
+        productId: it.productId,
+        variantId: it.variantId,
+        qty: it.quantity ?? it.qty ?? 1,
+        product: {
+          title: it.product?.title,
+          brand: it.product?.brand?.name,
+          color: useVariant ? it.variant?.color?.label : it.product?.color?.label,
+          size:  useVariant ? it.variant?.size?.title : it.product?.size?.title,
+          imageUrl: formatImageUrl(mainImage),
+          imageAlt,
+        },
+        price: it.price ?? it.sellingPrice ?? it.product?.sellingPrice ?? null,
+        mrp: it.mrp ?? it.product?.mrp ?? null,
+      };
+    }),
+  }));
+
+  // Match wishlist behavior: if nothing at all, return []
+  if (!shapedOrders.length && !relatedProducts.length) return [];
+
+  return { orders: shapedOrders, relatedProducts };
+}
 
 
 async listOrders(params: ListOrdersParams = {}) {
