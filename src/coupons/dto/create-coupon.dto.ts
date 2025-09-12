@@ -1,4 +1,4 @@
-import { IsEnum, IsNumber, IsOptional, IsString, IsBoolean, Min } from 'class-validator'
+import { IsEnum, IsNumber, IsOptional, IsString, IsBoolean, Min,IsDate } from 'class-validator'
 import { CouponType, PriceType } from '@prisma/client'
 import { Type } from 'class-transformer'
 
@@ -20,11 +20,16 @@ export class CreateCouponDto {
   @Min(0)
   minOrderAmount: number
 
+  @IsOptional()
   @Type(() => Date)
-  fromDate: Date
+  @IsDate()
+  fromDate?: Date
 
+  @IsOptional()
   @Type(() => Date)
-  toDate: Date
+  @IsDate()
+  toDate?: Date
+
   @IsOptional()
   @IsBoolean()
   @Type(() => Boolean)

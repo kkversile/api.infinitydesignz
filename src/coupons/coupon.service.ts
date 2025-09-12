@@ -34,26 +34,54 @@ type NormalizedItem = {
     productId: number;
   } | null;
 };
-
+function toDateOrNull(d: unknown): Date | null {
+  if (d == null) return null;
+  if (d instanceof Date && !isNaN(d.getTime())) return d;
+  const t = new Date(d as any);
+  return isNaN(t.getTime()) ? null : t;
+}
 @Injectable()
 export class CouponService {
   constructor(private prisma: PrismaService) {}
 
   /** Create coupon with duplicate code protection */
-  async create(data: CreateCouponDto) {
-    try {
-      const coupon = await this.prisma.coupon.create({ data });
-      return { message: 'Coupon created successfully', data: coupon };
-    } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
-        throw new BadRequestException('Coupon code already exists');
-      }
-      throw error;
+/** Create coupon with duplicate code protection */
+async create(data: CreateCouponDto) {
+  try {
+    const coupon = await this.prisma.coupon.create({
+      data: {
+        code: data.code,
+        type: data.type,
+        priceType: data.priceType,
+        value: data.value,
+        minOrderAmount: data.minOrderAmount,
+
+        // ✅ ensure dates are persisted (handles Date | string | undefined)
+        fromDate: toDateOrNull(data.fromDate),
+        toDate: toDateOrNull(data.toDate),
+
+        status: data.status ?? true,
+        menuId: data.menuId ?? null,
+        subMenuId: data.subMenuId ?? null,
+        listSubMenuId: data.listSubMenuId ?? null,
+        brandId: data.brandId ?? null,
+        sellerId: data.sellerId ?? null,
+        // If you actually store price range:
+        // priceRangeId: data.priceId ?? null,
+        url: data.url ?? null,
+      },
+    });
+    return { message: 'Coupon created successfully', data: coupon };
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    ) {
+      throw new BadRequestException('Coupon code already exists');
     }
+    throw error;
   }
+}
 
   /** List all coupons */
   findAll() {
@@ -73,20 +101,43 @@ export class CouponService {
   return coupon;
 }
   /** Update coupon with error handling */
-  async update(id: number, data: UpdateCouponDto) {
-    try {
-      const updated = await this.prisma.coupon.update({ where: { id }, data });
-      return { message: 'Coupon updated successfully', data: updated };
-    } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2025'
-      ) {
-        throw new NotFoundException('Coupon not found');
-      }
-      throw error;
+/** Update coupon with error handling */
+async update(id: number, data: UpdateCouponDto) {
+  try {
+    const updated = await this.prisma.coupon.update({
+      where: { id },
+      data: {
+        ...(data.code !== undefined && { code: data.code }),
+        ...(data.type !== undefined && { type: data.type }),
+        ...(data.priceType !== undefined && { priceType: data.priceType }),
+        ...(data.value !== undefined && { value: data.value }),
+        ...(data.minOrderAmount !== undefined && { minOrderAmount: data.minOrderAmount }),
+
+        // ✅ only set when provided; normalize to Date|null
+        ...(data.fromDate !== undefined && { fromDate: toDateOrNull(data.fromDate) }),
+        ...(data.toDate !== undefined && { toDate: toDateOrNull(data.toDate) }),
+
+        ...(data.status !== undefined && { status: !!data.status }),
+        ...(data.menuId !== undefined && { menuId: data.menuId }),
+        ...(data.subMenuId !== undefined && { subMenuId: data.subMenuId }),
+        ...(data.listSubMenuId !== undefined && { listSubMenuId: data.listSubMenuId }),
+        ...(data.brandId !== undefined && { brandId: data.brandId }),
+        ...(data.sellerId !== undefined && { sellerId: data.sellerId }),
+        // ...(data.priceId !== undefined && { priceRangeId: data.priceId }),
+        ...(data.url !== undefined && { url: data.url }),
+      },
+    });
+    return { message: 'Coupon updated successfully', data: updated };
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2025'
+    ) {
+      throw new NotFoundException('Coupon not found');
     }
+    throw error;
   }
+}
 
   /** Delete coupon with existence check */
   async remove(id: number) {
@@ -97,13 +148,23 @@ export class CouponService {
   }
 
   /** Get a coupon by its code (active only) */
-  private async getActiveCouponByCode(code: string) {
-    const coupon = await this.prisma.coupon.findFirst({
-      where: { code, status: true },
-    });
-    if (!coupon) throw new NotFoundException('Invalid or inactive coupon');
-    return coupon;
+/** Get a coupon by its code (active only, and within date window if set) */
+private async getActiveCouponByCode(code: string) {
+  const coupon = await this.prisma.coupon.findFirst({
+    where: { code, status: true },
+  });
+  if (!coupon) throw new NotFoundException('Invalid or inactive coupon');
+
+  const now = new Date();
+  if (coupon.fromDate && now < coupon.fromDate) {
+    throw new BadRequestException('Coupon is not active yet');
   }
+  if (coupon.toDate && now > coupon.toDate) {
+    throw new BadRequestException('Coupon has expired');
+  }
+  return coupon;
+}
+
 
   // ───────────────────────────
   // Public: APPLY TO CART (uses current cart state)
