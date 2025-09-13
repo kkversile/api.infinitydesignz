@@ -12,6 +12,7 @@ import { OrderStatus, PaymentStatus,OrderItemStatus  } from '@prisma/client';
 import { UpdateOrderItemDto, RequestCancelItemDto } from './dto/update-order-item.dto';
 import { PRODUCT_IMAGE_PATH } from '../config/constants';
 const ORDER_FINAL_STATES: OrderStatus[] = ['DELIVERED', 'CANCELLED'] as any;
+import { Prisma } from '@prisma/client';
 
 type UpdateOrderPayload =
   | string
@@ -150,6 +151,26 @@ const safeDiscount_place = Math.max(
   0,
   Math.min(Number((dto as any).couponDiscount) || 0, Number(subtotal) || 0)
 );
+
+// === INSERT (snapshot builder) === #realcode
+// === REPLACE the snapshot builder in buyNow() === #realcode
+const addressSnapshot: Prisma.InputJsonValue = {
+  id: address.id,
+  name: address.name,
+  buildingName: address.buildingName,
+  flatNumber: address.flatNumber,
+  addressLine1: address.addressLine1,
+  addressLine2: address.addressLine2,
+  city: address.city,
+  state: address.state,
+  pincode: address.pincode,
+  phone: address.phone,
+  label: address.label,
+  default: !!address.default,
+  createdAt: address.createdAt ? address.createdAt.toISOString() : null,
+  updatedAt: address.updatedAt ? address.updatedAt.toISOString() : null,
+};
+
 // Create order
   const order = await this.prisma.order.create({
     data: {
@@ -163,6 +184,7 @@ const safeDiscount_place = Math.max(
       gst,
       totalAmount,
       note,
+      addressSnapshot,
       items: {
         create: itemsArr.map((item) => ({
           productId: item.productId,
@@ -588,6 +610,11 @@ if (order.coupon && typeof (order as any).couponDiscount === 'number') {
   );
 }
 
+const safeAddress =
+  (order as any).addressSnapshot
+    ? (order as any).addressSnapshot
+    : order.address; // fallback for legacy orders
+
   return {
     id: order.id,
     status: order.status,
@@ -595,7 +622,7 @@ if (order.coupon && typeof (order as any).couponDiscount === 'number') {
     orderFrom: order.orderFrom,
     createdAt: order.createdAt,
     user,                 // ✅ now always present, even if orphaned
-    address: order.address,
+    address: safeAddress,
     payment: order.payment,
     coupon: order.coupon
       ? {
@@ -713,6 +740,23 @@ if (couponId != null) { // covers undefined & null
 
   // --- compute final coupon discount (capped to [0, subtotal]) ---
 const safeDiscount_place = Math.max(0, Math.min(Number((dto as any).couponDiscount) || 0, Number(subtotal) || 0));
+// === REPLACE the snapshot builder in placeOrder() === #realcode
+const addressSnapshot: Prisma.InputJsonValue = {
+  id: address.id,
+  name: address.name,
+  buildingName: address.buildingName,
+  flatNumber: address.flatNumber,
+  addressLine1: address.addressLine1,
+  addressLine2: address.addressLine2,
+  city: address.city,
+  state: address.state,
+  pincode: address.pincode,
+  phone: address.phone,
+  label: address.label,
+  default: !!address.default,
+  createdAt: address.createdAt ? address.createdAt.toISOString() : null,
+  updatedAt: address.updatedAt ? address.updatedAt.toISOString() : null,
+};
 
 // Create order
   const order = await this.prisma.order.create({
@@ -727,6 +771,8 @@ const safeDiscount_place = Math.max(0, Math.min(Number((dto as any).couponDiscou
       gst,
       totalAmount,
       note,
+      addressSnapshot,
+
       items: {
         create: [{
           productId,

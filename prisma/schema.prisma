@@ -551,7 +551,7 @@ model Address {
 model Order {
   id            Int           @id @default(autoincrement())
   userId        Int
-  addressId     Int
+  addressId     Int?
   paymentMethod PaymentMethod
   couponId      Int?
   couponDiscount Float        @default(0)
@@ -564,9 +564,10 @@ model Order {
   orderFrom     String        @default("web") // NEW FIELD
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
+  addressSnapshot Json?
 
   user    User        @relation(fields: [userId], references: [id])
-  address Address     @relation(fields: [addressId], references: [id])
+  address Address? @relation(fields: [addressId], references: [id], onDelete: SetNull)
   coupon  Coupon?     @relation(fields: [couponId], references: [id])
   items   OrderItem[]
   payment Payment?

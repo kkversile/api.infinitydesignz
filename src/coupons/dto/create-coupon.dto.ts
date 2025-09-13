@@ -40,6 +40,6 @@ export class CreateCouponDto {
   @IsOptional() listSubMenuId?: number
   @IsOptional() brandId?: number
   @IsOptional() sellerId?: number
-  @IsOptional() priceId?: number
+  @IsOptional() priceRangeId?: number
   @IsOptional() url?: string
 }

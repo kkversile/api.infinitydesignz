@@ -67,7 +67,7 @@ async create(data: CreateCouponDto) {
         brandId: data.brandId ?? null,
         sellerId: data.sellerId ?? null,
         // If you actually store price range:
-        // priceRangeId: data.priceId ?? null,
+        priceRangeId: data.priceRangeId ?? null,
         url: data.url ?? null,
       },
     });
@@ -123,7 +123,7 @@ async update(id: number, data: UpdateCouponDto) {
         ...(data.listSubMenuId !== undefined && { listSubMenuId: data.listSubMenuId }),
         ...(data.brandId !== undefined && { brandId: data.brandId }),
         ...(data.sellerId !== undefined && { sellerId: data.sellerId }),
-        // ...(data.priceId !== undefined && { priceRangeId: data.priceId }),
+         ...(data.priceRangeId !== undefined && { priceRangeId: data.priceRangeId }),
         ...(data.url !== undefined && { url: data.url }),
       },
     });
