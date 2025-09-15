@@ -20,7 +20,7 @@ export const DELIVERY_COMBINE_MODE: 'SUM' | 'MAX_PLUS_ADDON' = 'SUM';
 // small add-on for each extra PAID item beyond the max one:
 export const PER_ADDITIONAL_PAID_ITEM_FEE = 149;
 // free shipping if subtotal AFTER coupon >= threshold (₹)
-export const FREE_SHIPPING_THRESHOLD = 25000;
+export const FREE_SHIPPING_THRESHOLD = 100000;
 // never charge more than this (₹)
 export const MAX_DELIVERY_CAP = 2499;
 // optional: COD add-on (₹). You can wire isCOD later in getUserCart if needed.
