@@ -1,3 +1,4 @@
+// src/coupons/coupon.controller.ts
 import {
   Controller,
   Get,
@@ -43,20 +44,33 @@ export class CouponController {
   update(@Param("id") id: string, @Body() dto: UpdateCouponDto) {
     return this.service.update(+id, dto);
   }
+
   @UseGuards(AuthGuard)
   @Post("apply")
   applyCoupon(@Req() req, @Body() body: { code: string }) {
     return this.service.applyCouponToCart(req.user.id, body.code);
   }
 
- @UseGuards(AuthGuard)
-@Post('apply-buy-now')
-applyCouponBuyNow(
-  @Req() req,
-  @Body() body: { code: string }
-) {
-return this.service.applyCouponForItem(req.user.id, body.code);
-}
+  @UseGuards(AuthGuard)
+  @Post("apply-buy-now")
+  applyCouponBuyNow(@Req() req, @Body() body: { code: string }) {
+    return this.service.applyCouponForItem(req.user.id, body.code);
+  }
+
+  // ▶️ NEW: Clear coupon for Cart
+  @UseGuards(AuthGuard)
+  @Post("clear")
+  ClearCOuponCart(@Req() req) {
+    return this.service.clearCouponCart(req.user.id);
+  }
+
+  // ▶️ NEW: Clear coupon for Buy-Now
+  @UseGuards(AuthGuard)
+  @Post("clear-buy-now")
+  ClearCouponBuyNow(@Req() req) {
+    return this.service.clearCouponBuyNow(req.user.id);
+  }
+
   @Delete(":id")
   remove(@Param("id") id: string) {
     return this.service.remove(+id);

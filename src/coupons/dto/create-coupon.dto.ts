@@ -16,9 +16,12 @@ export class CreateCouponDto {
   @Min(0)
   value: number
 
+  // ✅ Optional; default to 0 if omitted
+  @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
-  minOrderAmount: number
+  minOrderAmount?: number = 0;
 
   @IsOptional()
   @Type(() => Date)

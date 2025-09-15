@@ -1,3 +1,4 @@
+// src/buynow/buynow.service.ts
 import {
   Injectable,
   NotFoundException,
@@ -8,20 +9,108 @@ import { PRODUCT_IMAGE_PATH } from '../config/constants';
 import { CreateBuyNowDto } from './dto/create-buy-now.dto';
 import { UpdateBuyNowDto } from './dto/update-buy-now.dto';
 
+// ETA + fee helpers (same ones used by Cart)
+import {
+  startCountingFrom,
+  addBusinessDays,
+  fmtShort,
+  PLATFORM_FEE,
+  DELIVERY_COMBINE_MODE,
+  PER_ADDITIONAL_PAID_ITEM_FEE,
+  FREE_SHIPPING_THRESHOLD,
+  MAX_DELIVERY_CAP,
+  COD_FEE,
+} from '../config/constants';
+
 const formatImageUrl = (fileName: string | null | undefined) =>
   fileName ? `${PRODUCT_IMAGE_PATH}${fileName}` : null;
+
+/** Internal shape for delivery calculation (no schema change) */
+type DeliveryRow = {
+  qty: number;
+  deliveryCharges: number | null; // from ProductDetails.deliveryCharges
+};
+
+/** Same delivery calculator as Cart (free threshold, caps, modes, COD) */
+function calculateDeliveryNoSchemaChange(
+  rows: DeliveryRow[],
+  cartSubtotalAfterCoupon: number,
+  opts?: {
+    combineMode?: 'SUM' | 'MAX_PLUS_ADDON';
+    perAdditionalPaidItemFee?: number;
+    freeShippingThreshold?: number;
+    maxCap?: number;
+    isCOD?: boolean;
+    codFee?: number;
+  }
+): { fee: number; formula: string } {
+  const combineMode = opts?.combineMode ?? DELIVERY_COMBINE_MODE;
+  const addon = opts?.perAdditionalPaidItemFee ?? PER_ADDITIONAL_PAID_ITEM_FEE;
+  const threshold = opts?.freeShippingThreshold ?? FREE_SHIPPING_THRESHOLD;
+  const maxCap = opts?.maxCap ?? MAX_DELIVERY_CAP;
+  const codFee = (opts?.isCOD && opts?.codFee) ? opts.codFee : 0;
+
+  const paidCharges: number[] = [];
+  const breakdown: string[] = [];
+
+  for (const r of rows) {
+    const c = r.deliveryCharges;
+    if (c === null) continue; // ignore "no delivery math" items
+    if (c <= 0) continue;     // free items add ₹0
+
+    if (r.qty > 1) breakdown.push(`${c} × ${r.qty}`);
+    else breakdown.push(`${c}`);
+
+    for (let i = 0; i < r.qty; i++) paidCharges.push(c);
+  }
+
+  let base = 0;
+  let formula = '';
+
+  if (paidCharges.length === 0) {
+    base = 0;
+    formula = 'No paid delivery items → Delivery = 0';
+  } else if (combineMode === 'SUM') {
+    base = paidCharges.reduce((a, b) => a + b, 0);
+    formula = `SUM: ${breakdown.join(' + ')} = ${base}`;
+  } else {
+    paidCharges.sort((a, b) => b - a);
+    const max = paidCharges[0];
+    const remaining = paidCharges.length - 1;
+    base = max + remaining * addon;
+    formula = `MAX_PLUS_ADDON: max=${max} + (${remaining} × ${addon}) = ${base}`;
+  }
+
+  if (threshold && cartSubtotalAfterCoupon >= threshold) {
+    formula += ` → free (subtotal ≥ ${threshold})`;
+    base = 0;
+  }
+
+  if (typeof maxCap === 'number' && base > maxCap) {
+    formula += ` → capped at ${maxCap}`;
+    base = maxCap;
+  }
+
+  if (codFee > 0) {
+    base += codFee;
+    formula += ` + COD ${codFee} = ${base}`;
+  }
+
+  const fee = Math.max(0, Math.round(base));
+  return { fee, formula };
+}
 
 @Injectable()
 export class BuyNowService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Replica of Cart's getUserCart response:
+   * Mirrors Cart response shape:
    * {
    *   items: [...],
    *   priceSummary: {
    *     totalMRP, discountOnMRP, couponDiscount, totalAfterDiscount,
-   *     platformFee, shippingFee, finalPayable
+   *     platformFee, shippingFee, shippingFormula, finalPayable
    *   }
    * }
    */
@@ -34,22 +123,24 @@ export class BuyNowService {
             brand: true,
             color: true,
             size: true,
-            images: true, // [{ url, alt }]
+            images: { where: { isMain: true } }, // [{ url, alt }]
           },
         },
         variant: {
           include: {
             color: true,
             size: true,
-            images: true, // [{ url, alt }]
+            images: { where: { isMain: true } }, // [{ url, alt }]
           },
         },
       },
     });
 
+    // Empty payload (cart-like)
     if (!rawItem) {
-      const platformFee = 20;
-      const shippingFee = 80;
+      const platformFee = PLATFORM_FEE;
+      // No item → no delivery rows; still return shape
+      const shippingFee = 0;
       return {
         items: [],
         priceSummary: {
@@ -59,6 +150,7 @@ export class BuyNowService {
           totalAfterDiscount: 0,
           platformFee,
           shippingFee,
+          shippingFormula: 'No items → Delivery = 0',
           finalPayable: platformFee + shippingFee,
         },
       };
@@ -88,11 +180,30 @@ export class BuyNowService {
       ? rawItem.variant?.mrp ?? rawItem.product?.mrp
       : rawItem.product?.mrp;
 
+    // --- ETA: read SLA from productDetails (no schema change)
+    const pd = await this.prisma.productDetails.findUnique({
+      where: { productId: rawItem.productId },
+      select: { sla: true, deliveryCharges: true },
+    });
+
+    let estimatedDateISO: string | null = null;
+    let estimatedDateText: string | null = null;
+
+    if (typeof pd?.sla === 'number' && pd.sla >= 0) {
+      const now = new Date();
+      const start = startCountingFrom(now);
+      const eta = addBusinessDays(start, pd.sla);
+      estimatedDateISO = eta.toISOString();
+      estimatedDateText = fmtShort(eta);
+    }
+
     const productData = {
       title: rawItem.product?.title,
       brand: rawItem.product?.brand?.name,
       price,
       mrp,
+      estimatedDeliveryDate: estimatedDateISO,  // machine-friendly
+      estimatedDateText: estimatedDateText,     // UI-ready: "Tue, 13 Aug"
       color: useVariant
         ? rawItem.variant?.color?.label
         : rawItem.product?.color?.label,
@@ -103,6 +214,7 @@ export class BuyNowService {
       imageAlt,
     };
 
+    // Build items array (expose deliveryCharge at item-level like Cart)
     const items = [
       {
         id: rawItem.id, // buyNowItem id
@@ -110,13 +222,16 @@ export class BuyNowService {
         variantId: rawItem.variantId,
         quantity: rawItem.quantity,
         [useVariant ? 'variant' : 'product']: productData,
+        deliveryCharge: pd?.deliveryCharges ?? null,
+        _deliveryCharges: pd?.deliveryCharges ?? null, // internal for fee calc
       },
     ];
 
-    // --- price summary (replicated from Cart) ---
-    let totalMRP = (mrp || 0) * rawItem.quantity;
-    let totalSellingPrice = (price || 0) * rawItem.quantity;
+    // --- Price summary (coupon + platform + SHIPPING LIKE CART) ---
+    const totalMRP = (mrp || 0) * rawItem.quantity;
+    const totalSellingPrice = (price || 0) * rawItem.quantity;
 
+    // Applied coupon (if any, not tied to an order)
     const appliedCoupon = await this.prisma.appliedCoupon.findFirst({
       where: { userId, orderId: null },
       include: { coupon: true },
@@ -142,20 +257,43 @@ export class BuyNowService {
       }
     }
 
-    const platformFee = 20;
-    const shippingFee = 80;
+    const platformFee = PLATFORM_FEE;
+
+    // Delivery rows: 1 item in BuyNow
+    const deliveryRows: DeliveryRow[] = [
+      {
+        qty: rawItem.quantity,
+        deliveryCharges: items[0]._deliveryCharges,
+      },
+    ];
+
+    const subtotalAfterCoupon = Math.max(0, totalSellingPrice - couponDiscount);
+
+    const { fee: shippingFee, formula: shippingFormula } =
+      calculateDeliveryNoSchemaChange(deliveryRows, subtotalAfterCoupon, {
+        combineMode: DELIVERY_COMBINE_MODE,
+        perAdditionalPaidItemFee: PER_ADDITIONAL_PAID_ITEM_FEE,
+        freeShippingThreshold: FREE_SHIPPING_THRESHOLD,
+        maxCap: MAX_DELIVERY_CAP,
+        // set from session/choice if needed:
+        isCOD: false,
+        codFee: COD_FEE,
+      });
+
+    // Strip internals before return
+    const publicItems = items.map(({ _deliveryCharges, ...rest }) => rest);
 
     return {
-      items,
+      items: publicItems,
       priceSummary: {
         totalMRP,
         discountOnMRP: totalMRP - totalSellingPrice,
         couponDiscount,
-        totalAfterDiscount: totalSellingPrice - couponDiscount,
+        totalAfterDiscount: subtotalAfterCoupon,
         platformFee,
         shippingFee,
-        finalPayable:
-          totalSellingPrice - couponDiscount + platformFee + shippingFee,
+        shippingFormula,
+        finalPayable: subtotalAfterCoupon + platformFee + shippingFee,
       },
     };
   }
@@ -165,7 +303,7 @@ export class BuyNowService {
    * Mirrors Cart "add" behavior and returns the same response shape.
    */
   async setBuyNow(userId: number, dto: CreateBuyNowDto) {
-    // Validate variant belongs to product (avoid prisma.productVariant accessor)
+    // Validate variant belongs to product
     if (dto.variantId) {
       const productWithVariant = await this.prisma.product.findFirst({
         where: { id: dto.productId, variants: { some: { id: dto.variantId } } },
@@ -222,15 +360,13 @@ export class BuyNowService {
     };
   }
 
-  /**
-   * Alias to satisfy controllers calling updateQuantity.
-   */
+  /** Alias to satisfy controllers calling updateQuantity. */
   async updateQuantity(userId: number, dto: UpdateBuyNowDto) {
     return this.updateBuyNow(userId, dto);
   }
 
   /**
-   * Clear Buy Now item; returns the same cart-like payload (empty items + priceSummary).
+   * Clear Buy Now item; returns the same cart-like payload.
    */
   async clear(userId: number) {
     const existing = await this.prisma.buyNowItem.findUnique({ where: { userId } });
