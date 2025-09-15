@@ -1,7 +1,16 @@
+// src/wishlist/wishlist.service.ts
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AddToWishlistDto } from './dto/add-to-wishlist.dto';
 import { PRODUCT_IMAGE_PATH } from '../config/constants';
+
+// ⬇️ ETA helpers reused from Cart constants (already in your project)
+import {
+  // You can import only what you use; keeping these three is enough here:
+  startCountingFrom,
+  addBusinessDays,
+  fmtShort,
+} from '../config/constants';
 
 const formatImageUrl = (fileName: string | null) =>
   fileName ? `${PRODUCT_IMAGE_PATH}${fileName}` : null;
@@ -87,8 +96,23 @@ export class WishlistService {
       },
     });
 
+    // === Helper to compute ETA from sla days (same logic as Cart) ===
+    const computeEta = (slaDays: number | null | undefined) => {
+      if (typeof slaDays !== 'number' || slaDays < 0) {
+        return { estimatedDeliveryDate: null as string | null, estimatedDateText: null as string | null };
+      }
+      const now = new Date();
+      const start = startCountingFrom(now);
+      const eta = addBusinessDays(start, slaDays);
+      return {
+        estimatedDeliveryDate: eta.toISOString(),
+        estimatedDateText: fmtShort(eta),
+      };
+    };
+
     // Shape wishlist items
-    const wishlistItems = list.map((item) => {
+    const wishlistItems = [];
+    for (const item of list) {
       const useVariant = item.variantId !== null;
 
       const mainImage = useVariant
@@ -100,6 +124,14 @@ export class WishlistService {
         : item.product?.images?.[0]?.alt || '';
 
       const formattedImageUrl = formatImageUrl(mainImage);
+
+      // 🔎 Fetch productDetails.sla (no schema change; per-row lookup)
+      const details = await this.prisma.productDetails.findUnique({
+        where: { productId: item.productId },
+        select: { sla: true }, // if you also want to expose deliveryCharges here, add deliveryCharges: true
+      });
+
+      const { estimatedDeliveryDate, estimatedDateText } = computeEta(details?.sla ?? null);
 
       const response: any = {
         id: item.id,
@@ -117,6 +149,9 @@ export class WishlistService {
           size: item.variant?.size?.title ?? null,
           imageUrl: formattedImageUrl,
           imageAlt,
+          // === NEW: ETA fields (kept under the same object as in Cart)
+          estimatedDeliveryDate, // machine-friendly
+          estimatedDateText,     // UI-ready: "Tue, 13 Aug"
         };
       } else {
         response.product = {
@@ -128,15 +163,18 @@ export class WishlistService {
           size: item.product?.size?.title ?? null,
           imageUrl: formattedImageUrl,
           imageAlt,
+          // === NEW: ETA fields (requested for wishListItems.product)
+          estimatedDeliveryDate, // machine-friendly
+          estimatedDateText,     // UI-ready: "Tue, 13 Aug"
         };
       }
 
-      return response;
-    });
+      wishlistItems.push(response);
+    }
 
     // Build relatedProducts ONCE for all wishlist items
     const wishlistProductIds = list.map((i) => i.productId);
-    const categoryIds = list.map((i) => i.product?.categoryId).filter(Boolean);
+    const categoryIds = list.map((i) => i.product?.categoryId).filter(Boolean) as number[];
 
     // Gather sibling categories
     const siblingCategoryIds: number[] = [];
@@ -187,12 +225,12 @@ export class WishlistService {
         badgeDiscountPercent,
       };
     });
- if (wishlistItems.length === 0 && relatedProducts.length === 0) {
+
+    if (wishlistItems.length === 0 && relatedProducts.length === 0) {
       return [];
     }
     return { wishlistItems, relatedProducts };
   }
-
 
   async remove(userId: number, wishlistId: number) {
     const wishlist = await this.prisma.wishlist.findUnique({ where: { id: wishlistId } });

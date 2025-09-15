@@ -8,6 +8,11 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { CreateProductsDto, UpdateProductsDto } from "./dto";
 import { QueryProductsDto } from './query-products.dto';
 
+import {
+  // ...your existing imports
+  CUTOFF_HOUR_LOCAL, SKIP_WEEKENDS, HOLIDAYS, // optional, if you want
+ isHoliday, isWeekend,nextBusinessDay,startCountingFrom, addBusinessDays, fmtShort,
+} from '../../config/constants';
 @Injectable()
 export class ProductsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -1059,7 +1064,23 @@ async getProductDetails(productId: number, variantId?: number) {
       rows: s.rows.sort((a, b) => a.label.localeCompare(b.label)),
     }))
     .sort((a, b) => a.setTitle.localeCompare(b.setTitle));
+// --- ETA & delivery charge (from ProductDetails) ---
+const now = new Date();
+const slaDays = typeof product.productDetails?.sla === 'number'
+  ? product.productDetails!.sla
+  : null;
 
+let estimatedDeliveryDate: string | null = null;
+let estimatedDeliveryText: string | null = null;
+
+if (slaDays !== null && slaDays >= 0) {
+  const start = startCountingFrom(now);
+  const eta = addBusinessDays(start, slaDays);
+  estimatedDeliveryDate = eta.toISOString();               // machine-friendly
+  estimatedDeliveryText = `${fmtShort(eta)}`;  // UI-ready
+}
+
+const deliveryCharge = product.productDetails?.deliveryCharges ?? null;
   return {
     ...product,
     // override variants with discount-augmented versions
@@ -1086,6 +1107,9 @@ async getProductDetails(productId: number, variantId?: number) {
 
     // 👇 grouped sections for UI (like the screenshot)
     featureSets,
+      estimatedDeliveryDate,
+  estimatedDeliveryText,
+  deliveryCharge,
   };
 }
 
