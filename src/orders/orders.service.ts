@@ -13,6 +13,7 @@ import { UpdateOrderItemDto, RequestCancelItemDto } from './dto/update-order-ite
 import { PRODUCT_IMAGE_PATH } from '../config/constants';
 const ORDER_FINAL_STATES: OrderStatus[] = ['DELIVERED', 'CANCELLED'] as any;
 import { Prisma } from '@prisma/client';
+import {  PLATFORM_FEE } from '../config/constants';
 
 type UpdateOrderPayload =
   | string
@@ -151,6 +152,7 @@ const safeDiscount_place = Math.max(
   0,
   Math.min(Number((dto as any).couponDiscount) || 0, Number(subtotal) || 0)
 );
+   const platformFee = PLATFORM_FEE
 
 // === INSERT (snapshot builder) === #realcode
 // === REPLACE the snapshot builder in buyNow() === #realcode
@@ -181,6 +183,7 @@ const addressSnapshot: Prisma.InputJsonValue = {
       couponDiscount: safeDiscount_place,
       subtotal,
       shippingFee,
+      platformFee,
       gst,
       totalAmount,
       note,
@@ -488,6 +491,7 @@ async listOrders(params: ListOrdersParams = {}) {
     items: order.items,
     totalAmount: order.priceSummary.finalPayable,
     shipping: order.priceSummary.shippingFee,
+    platformFee: order.priceSummary.platformFee,
     gst: order.priceSummary.totalAfterDiscount * 0.18, // or fetch real GST if available
   };
 }
@@ -593,7 +597,7 @@ async getOrderDetails(orderId: number) {
   });
 
   // Fees (keep consistent with creation logic)
-  const platformFee = 20;
+  const platformFee =    Number(order.platformFee) || PLATFORM_FEE;
   const shippingFee = Number(order.shippingFee) || 0;
 
   // Prefer stored couponDiscount snapshot; fall back to recomputing from totals for legacy orders
@@ -651,6 +655,8 @@ async buyNow(dto: BuyNowDto, userId: number) {
     variantId,
     quantity = 1,
     addressId,
+  
+    shippingFee,
     note,
     couponId,               // optional: link order -> coupon
     couponDiscount = 0,     // final discount already computed on UI
@@ -709,8 +715,8 @@ async buyNow(dto: BuyNowDto, userId: number) {
   const safeDiscount = Math.max(0, Math.min(subtotal, Number(couponDiscount) || 0));
 
   // Fees (match cart logic)
-  const platformFee = 20;
-  const shippingFee = 80;
+  const platformFee = PLATFORM_FEE;
+  //const shippingFee = 80;
 
   const totalAfterDiscount = Math.max(0, subtotal - safeDiscount);
   const gst = Math.round(totalAfterDiscount * 0.18 * 100) / 100;

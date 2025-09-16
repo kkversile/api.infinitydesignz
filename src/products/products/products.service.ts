@@ -7,7 +7,7 @@ import {
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateProductsDto, UpdateProductsDto } from "./dto";
 import { QueryProductsDto } from './query-products.dto';
-
+import { Prisma } from '@prisma/client';
 import {
   // ...your existing imports
   CUTOFF_HOUR_LOCAL, SKIP_WEEKENDS, HOLIDAYS, // optional, if you want
@@ -521,8 +521,7 @@ console.log('incomingWithId',incomingWithId);
     return { message: "Product and related data deleted successfully" };
   }
 
-  // ====== FILTERED SEARCH (robust coercion + CSV support) ======
- // ====== FILTERED SEARCH (images shaped like findOne) ======
+// ====== FILTERED SEARCH (images shaped like findOne) — with APP-SIDE RELEVANCE ======
 async searchProducts(q: QueryProductsDto) {
   // --- helpers (local) ---
   const toCsvArray = (val: any): string[] => {
@@ -565,7 +564,10 @@ async searchProducts(q: QueryProductsDto) {
 
   const page = toInt(q.page) ?? 1;
   const pageSize = toInt(q.pageSize) ?? 20;
-  const sort = (q.sort as 'newest' | 'price_asc' | 'price_desc') ?? 'newest';
+
+  // support 'relevance' and default to relevance when a search is present
+  const sort = (q.sort as 'relevance' | 'newest' | 'price_asc' | 'price_desc')
+    ?? (searchStr ? 'relevance' : 'newest');
 
   // CSV params (fallback to legacy JSON "filters" if CSV empty)
   let colorLabels = Array.isArray((q as any).color) ? (q as any).color : toCsvArray((q as any).color);
@@ -580,7 +582,7 @@ async searchProducts(q: QueryProductsDto) {
       filterListIds = Array.isArray(parsed?.filterListIds)
         ? parsed.filterListIds.map((n: any) => Number(n)).filter((n: number) => Number.isFinite(n))
         : [];
-    } catch {/* ignore */}
+    } catch { /* ignore */ }
   }
 
   // --- where builder ---
@@ -596,6 +598,7 @@ async searchProducts(q: QueryProductsDto) {
   }
 
   if (searchStr) {
+    // keep a broad OR to filter the set we score
     where.OR = [
       { title: { contains: searchStr } },
       { description: { contains: searchStr } },
@@ -658,13 +661,28 @@ async searchProducts(q: QueryProductsDto) {
     where.filters = { some: { filterListId: { in: filterListIds } } };
   }
 
-  // --- sorting ---
-  let orderBy: any;
-  switch (sort) {
-    case 'price_asc': orderBy = { sellingPrice: 'asc' }; break;
-    case 'price_desc': orderBy = { sellingPrice: 'desc' }; break;
-    case 'newest':
-    default: orderBy = { createdAt: 'desc' };
+  // --- sorting (no Prisma _relevance; we will sort in app when needed) ---
+  const useClientRelevance = sort === 'relevance' && !!searchStr;
+
+  let orderBy:
+    | Prisma.Enumerable<Prisma.ProductOrderByWithRelationInput>
+    | undefined;
+
+  if (!useClientRelevance) {
+    switch (sort) {
+      case 'price_asc':
+        orderBy = [{ sellingPrice: 'asc' as const }];
+        break;
+      case 'price_desc':
+        orderBy = [{ sellingPrice: 'desc' as const }];
+        break;
+      case 'newest':
+      default:
+        orderBy = [{ createdAt: 'desc' as const }];
+    }
+  } else {
+    // stable default when fetching before we score
+    orderBy = [{ createdAt: 'desc' as const }];
   }
 
   // --- include (variants may also be price filtered) ---
@@ -676,28 +694,37 @@ async searchProducts(q: QueryProductsDto) {
     };
   }
 
-  const baseFindArgs = {
-    where,
-    include: {
-      brand: true,
-        color: true,         
-        size: true,
-      category: { include: { parent: { include: { parent: true } } } },
-      variants: variantsInclude,
-      images: true,
-      filters: true,
-      features: true,
-    },
-    orderBy,
+  const commonInclude = {
+    brand: true,
+    color: true,
+    size: true,
+    category: { include: { parent: { include: { parent: true } } } },
+    variants: variantsInclude,
+    images: true,
+    filters: true,
+    features: true,
   } as const;
 
-  const candidates = hasDiscFilter
-    ? await this.prisma.product.findMany(baseFindArgs)
-    : await this.prisma.product.findMany({
-        ...baseFindArgs,
-        skip: (Math.max(page, 1) - 1) * Math.min(Math.max(pageSize, 1), 100),
-        take: Math.min(Math.max(pageSize, 1), 100),
-      });
+  // --- fetch (note: for relevance we fetch a larger pool, then paginate after scoring)
+  const MAX_RELEVANCE_POOL = 1000; // guard-rail for big categories
+  let candidates: any[];
+
+  if (hasDiscFilter || useClientRelevance) {
+    candidates = await this.prisma.product.findMany({
+      where,
+      include: commonInclude,
+      orderBy,                 // just for stability; real ordering happens below when relevance
+      take: useClientRelevance ? MAX_RELEVANCE_POOL : undefined,
+    });
+  } else {
+    candidates = await this.prisma.product.findMany({
+      where,
+      include: commonInclude,
+      orderBy,
+      skip: (Math.max(page, 1) - 1) * Math.min(Math.max(pageSize, 1), 100),
+      take: Math.min(Math.max(pageSize, 1), 100),
+    });
+  }
 
   const totalBase = await this.prisma.product.count({ where });
 
@@ -796,12 +823,42 @@ async searchProducts(q: QueryProductsDto) {
     };
   });
 
-  // --- paginate after discount filter (if used)
+  // --- app-side relevance scoring (only when requested) ---
+  if (useClientRelevance && searchStr) {
+    const ql = searchStr.toLowerCase();
+    const score = (p: any) => {
+      let s = 0;
+      const title = (p.title ?? '').toLowerCase();
+      const desc  = (p.description ?? '').toLowerCase();
+      const sku   = (p.sku ?? '').toLowerCase();
+      const keys  = (p.searchKeywords ?? '').toLowerCase();
+
+      if (title === ql) s += 1000;        // exact title match
+      if (title.startsWith(ql)) s += 300; // prefix boost
+      if (title.includes(ql)) s += 200;
+      if (keys.includes(ql))  s += 120;
+      if (desc.includes(ql))  s += 80;
+      if (sku.includes(ql))   s += 60;
+
+      // tiny boost for variant SKU hits
+      for (const v of p.variants ?? []) {
+        const vsku = (v.sku ?? '').toLowerCase();
+        if (vsku.includes(ql)) { s += 30; break; }
+      }
+      return s;
+    };
+    reshaped.sort((a, b) => score(b) - score(a));
+  }
+
+  // --- paginate after discount filter or relevance sorting
   const take = Math.min(Math.max(pageSize, 1), 100);
   const skip = (Math.max(page, 1) - 1) * take;
 
-  const finalItems = hasDiscFilter ? reshaped.slice(skip, skip + take) : reshaped;
-  const totalAfter = hasDiscFilter ? reshaped.length : totalBase;
+  const finalItems = (hasDiscFilter || useClientRelevance)
+    ? reshaped.slice(skip, skip + take)
+    : reshaped;
+
+  const totalAfter = (hasDiscFilter || useClientRelevance) ? reshaped.length : totalBase;
 
   return {
     meta: {
@@ -816,6 +873,9 @@ async searchProducts(q: QueryProductsDto) {
     items: finalItems,
   };
 }
+
+
+
 
 
 

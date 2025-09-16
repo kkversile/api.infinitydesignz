@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsIn, IsInt, IsNumber, IsOptional, IsString, Min,Max } from 'class-validator';
+import { IsIn, IsInt, IsNumber, IsOptional, IsString, Min, Max } from 'class-validator';
 
 export class QueryProductsDto {
   // search & brand
@@ -32,8 +32,7 @@ export class QueryProductsDto {
   @IsNumber()
   maxPrice?: number;
 
-    // ✅ Discount % band (inclusive)
-  // Example: less than 10% → discountPctMax=10
+  // Discount % band (inclusive)
   @IsOptional() @Transform(({ value }) => parseFloat(value))
   @IsNumber() @Min(0) @Max(100)
   discountPctMin?: number;
@@ -42,8 +41,7 @@ export class QueryProductsDto {
   @IsNumber() @Min(0) @Max(100)
   discountPctMax?: number;
 
-  // ✅ NEW: CSV params
-  // e.g. color=Red,Blue  -> ['Red','Blue']
+  // CSV params
   @IsOptional()
   @Transform(({ value }) =>
     value ? String(value).split(',').map((s: string) => s.trim()).filter(Boolean) : undefined
@@ -51,7 +49,6 @@ export class QueryProductsDto {
   @IsString({ each: true })
   color?: string[];
 
-  // e.g. size=L,XL -> ['L','XL']
   @IsOptional()
   @Transform(({ value }) =>
     value ? String(value).split(',').map((s: string) => s.trim()).filter(Boolean) : undefined
@@ -59,7 +56,6 @@ export class QueryProductsDto {
   @IsString({ each: true })
   size?: string[];
 
-  // e.g. filterListIds=12,33 -> [12, 33]
   @IsOptional()
   @Transform(({ value }) =>
     value
@@ -69,13 +65,13 @@ export class QueryProductsDto {
   @IsInt({ each: true })
   filterListIds?: number[];
 
-  // Back-compat: if someone still sends JSON here, we’ll fall back to it
+  // Back-compat: JSON blob fallback
   @IsOptional() @IsString()
   filters?: string;
 
-  // sort & pagination
-  @IsOptional() @IsIn(['newest', 'price_asc', 'price_desc'])
-  sort?: 'newest' | 'price_asc' | 'price_desc';
+  // sort & pagination  ⬅️ now includes 'relevance'
+  @IsOptional() @IsIn(['relevance', 'newest', 'price_asc', 'price_desc'])
+  sort?: 'relevance' | 'newest' | 'price_asc' | 'price_desc';
 
   @IsOptional() @Transform(({ value }) => parseInt(value, 10))
   @IsInt() @Min(1)

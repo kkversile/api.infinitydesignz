@@ -37,6 +37,14 @@ export class BuyNowDto {
 
   @Type(() => Number)
   @IsOptional()
+  @IsInt()
+  shippingFee?: number;
+
+  
+
+  @Type(() => Number)
+  @IsOptional()
   @IsNumber()
   couponDiscount?: number; // final discount from UI; service already caps it
+
 }
