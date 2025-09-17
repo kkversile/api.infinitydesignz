@@ -3,6 +3,8 @@ import {
   Injectable,
   InternalServerErrorException,
   NotFoundException,
+    ConflictException,          // ← add this
+
 } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CreateProductsDto, UpdateProductsDto } from "./dto";
@@ -474,52 +476,86 @@ console.log('incomingWithId',incomingWithId);
 }
 
 
-  // DELETE
-  async remove(id: number) {
-    const product = await this.prisma.product.findUnique({
-      where: { id },
-      include: {
-        variants: true,
-        images: true,
-        features: true,
-        filters: true,
-        productDetails: true,
-      },
+// === REPLACE ENTIRE METHOD ===============================
+async remove(id: number) {
+  // Ensure product exists first
+  const exists = await this.prisma.product.findUnique({
+    where: { id },
+    select: { id: true },
+  });
+  if (!exists) throw new NotFoundException("Product not found");
+
+  try {
+    await this.prisma.$transaction(async (tx) => {
+      // 1) Gather variant ids for deep deletes
+      const variants = await tx.variant.findMany({
+        where: { productId: id },
+        select: { id: true },
+      });
+      const variantIds = variants.map(v => v.id);
+
+      // 2) Deepest children first — things that reference VARIANTS
+      if (variantIds.length) {
+        await tx.image.deleteMany({ where: { variantId: { in: variantIds } } });
+        // (If you ever add variant-level feature/filter tables, delete them here too)
+      }
+
+      // 3) Children that reference PRODUCT directly
+      await tx.productFeature.deleteMany({ where: { productId: id } });
+      await tx.productFilter.deleteMany({ where: { productId: id } });
+
+      // One-to-one details row
+      await tx.productDetails.deleteMany({ where: { productId: id } });
+
+      // Images that point directly to the product (non-variant images)
+      await tx.image.deleteMany({ where: { productId: id } });
+
+      // Promotion join rows
+      await tx.productMainCategoryPromotion.deleteMany({ where: { productId: id } });
+
+      // Session-like references
+      await tx.buyNowItem.deleteMany({ where: { productId: id } });
+
+      // Cart & Wishlist
+      await tx.cartItem.deleteMany({ where: { productId: id } });
+      await tx.wishlist.deleteMany({ where: { productId: id } });
+
+      // 4) Remove variants (their children are gone)
+      await tx.variant.deleteMany({ where: { productId: id } });
+
+      // 5) Finally delete the product
+      // Note: OrderItem.productId is nullable with onDelete:SetNull in your schema,
+      // so historical orders won't block this.
+      await tx.product.delete({ where: { id } });
     });
-    if (!product) throw new NotFoundException("Product not found");
-
-    const deleteOps = [];
-
-    // NEW: unlink promotions for this product
-    deleteOps.push(
-      this.prisma.productMainCategoryPromotion.deleteMany({ where: { productId: id } })
-    );
-
-    const variantImageIds = await this.prisma.image.findMany({
-      where: { variantId: { in: product.variants.map((v) => v.id) } },
-      select: { id: true },
-    });
-
-    deleteOps.push(
-      this.prisma.image.deleteMany({
-        where: { id: { in: variantImageIds.map((i) => i.id) } },
-      }),
-    );
-
-    deleteOps.push(this.prisma.image.deleteMany({ where: { productId: id } }));
-    deleteOps.push(this.prisma.productFeature.deleteMany({ where: { productId: id } }));
-    deleteOps.push(this.prisma.productFilter.deleteMany({ where: { productId: id } }));
-    deleteOps.push(this.prisma.variant.deleteMany({ where: { productId: id } }));
-    deleteOps.push(this.prisma.productDetails.deleteMany({ where: { productId: id } }));
-    deleteOps.push(this.prisma.cartItem.deleteMany({ where: { productId: id } }));
-    deleteOps.push(this.prisma.wishlist.deleteMany({ where: { productId: id } }));
-
-    deleteOps.push(this.prisma.product.delete({ where: { id } }));
-
-    await this.prisma.$transaction(deleteOps);
 
     return { message: "Product and related data deleted successfully" };
+  } catch (e: any) {
+  if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2003') {
+    // Use Promise.all (not $transaction) to avoid PrismaPromise typing issues
+    const [orderItemsCnt, pmcpCnt, buyNowCnt] = await Promise.all([
+      this.prisma.orderItem.count({ where: { productId: id } }),
+      this.prisma.productMainCategoryPromotion.count({ where: { productId: id } }),
+      this.prisma.buyNowItem.count({ where: { productId: id } }),
+    ]);
+
+    throw new ConflictException({
+      message: `Foreign key constraint blocked deleting Product ${id}.`,
+      likelyBlockers: {
+        orderItems_should_be_SetNull_already: orderItemsCnt,
+        productMainCategoryPromotion_links: pmcpCnt,
+        buyNowItems: buyNowCnt,
+      },
+      nextSteps:
+        "Ensure product-linked rows are removed, or set onDelete: Cascade for purely-dependent tables.",
+    });
   }
+  throw new InternalServerErrorException(e?.message ?? "Delete failed");
+}
+
+}
+// === END REPLACEMENT =====================================
+
 
 // ====== FILTERED SEARCH (images shaped like findOne) — with APP-SIDE RELEVANCE ======
 async searchProducts(q: QueryProductsDto) {
