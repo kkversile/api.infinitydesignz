@@ -23,43 +23,54 @@ export class FilterSetService {
   }
 
   /** Create FilterSet */
-  async create(data: {
-    title: string;
-    priority: number;
-    status?: boolean;
-    filterTypeId: number;
-  }) {
-    // FK-safe: validate filterTypeId and ensure FilterType exists
-    const filterTypeId = this.toPosInt(data.filterTypeId);
-    if (!filterTypeId) {
-      throw new BadRequestException('filterTypeId is required and must be a positive integer.');
-    }
-    const ft = await this.prisma.filterType.findUnique({ where: { id: filterTypeId } });
-    if (!ft) {
-      throw new BadRequestException(`FilterType ${filterTypeId} does not exist.`);
-    }
-
-    const payload: any = {
-      title: data.title?.trim(),
-      priority: Number(data.priority),
-      filterTypeId,
-    };
-    const status = this.normBool(data.status);
-    if (status !== undefined) payload.status = status;
-
-    try {
-      const filterSet = await this.prisma.filterSet.create({ data: payload });
-      return {
-        message: 'Filter Set created successfully',
-        data: filterSet,
-      };
-    } catch (err: any) {
-      if (err?.code === 'P2003') {
-        throw new BadRequestException('Invalid filterTypeId: foreign key constraint failed');
-      }
-      throw err;
-    }
+ /** Create FilterSet (unique title under filterTypeId) */
+async create(data: {
+  title: string;
+  priority: number;
+  status?: boolean;
+  filterTypeId: number;
+}) {
+  // Validate/normalize inputs
+  const filterTypeId = this.toPosInt(data.filterTypeId);
+  if (!filterTypeId) {
+    throw new BadRequestException('filterTypeId is required and must be a positive integer.');
   }
+  const ft = await this.prisma.filterType.findUnique({ where: { id: filterTypeId } });
+  if (!ft) throw new BadRequestException(`FilterType ${filterTypeId} does not exist.`);
+
+  const title = (data.title ?? '').trim();
+  if (!title) throw new BadRequestException('title is required');
+
+  // ✅ Uniqueness pre-check
+  const duplicate = await this.prisma.filterSet.findFirst({
+    where: { filterTypeId, title },
+    select: { id: true },
+  });
+  if (duplicate) throw new BadRequestException('Title already exists for this Filter Type');
+
+  const payload: any = {
+    title,
+    priority: Number(data.priority),
+    filterTypeId,
+  };
+  const status = this.normBool(data.status);
+  if (status !== undefined) payload.status = status;
+
+  try {
+    const filterSet = await this.prisma.filterSet.create({ data: payload });
+    return { message: 'Filter Set created successfully', data: filterSet };
+  } catch (err: any) {
+    if (err?.code === 'P2002') {
+      // race condition safeguard for unique(title, filterTypeId)
+      throw new BadRequestException('Title already exists for this Filter Type');
+    }
+    if (err?.code === 'P2003') {
+      throw new BadRequestException('Invalid filterTypeId: foreign key constraint failed');
+    }
+    throw err;
+  }
+}
+
 
   /** Get all FilterSets with their FilterType */
   findAll(status: StatusFilter = 'active') {
@@ -82,53 +93,61 @@ export class FilterSetService {
   }
 
   /** Update FilterSet */
-  async update(id: number, data: {
-    title?: string;
-    priority?: number;
-    status?: boolean;
-    filterTypeId?: number;
-  }) {
-    await this.findOne(id); // Ensure exists
+/** Update FilterSet (unique title under filterTypeId) */
+async update(id: number, data: {
+  title?: string;
+  priority?: number;
+  status?: boolean;
+  filterTypeId?: number;
+}) {
+  // Current row
+  const current = await this.prisma.filterSet.findUnique({ where: { id } });
+  if (!current) throw new NotFoundException('Filter Set not found');
 
-    // Only touch filterTypeId if provided; validate target exists
-    let nextFilterTypeId: number | undefined = undefined;
-    if ('filterTypeId' in data) {
-      const parsed = this.toPosInt(data.filterTypeId);
-      if (!parsed) {
-        throw new BadRequestException('filterTypeId must be a positive integer when provided.');
-      }
-      const exists = await this.prisma.filterType.findUnique({ where: { id: parsed } });
-      if (!exists) {
-        throw new BadRequestException(`FilterType ${parsed} does not exist (filterTypeId).`);
-      }
-      nextFilterTypeId = parsed;
+  // Resolve next values
+  const nextTitle =
+    data.title !== undefined ? (data.title ?? '').trim() : current.title;
+  if (!nextTitle) throw new BadRequestException('title cannot be empty');
+
+  let nextFilterTypeId = current.filterTypeId;
+  if ('filterTypeId' in data) {
+    const parsed = this.toPosInt(data.filterTypeId);
+    if (!parsed) {
+      throw new BadRequestException('filterTypeId must be a positive integer when provided.');
     }
-
-    const payload: any = {
-      ...(data.title !== undefined && { title: data.title?.trim() }),
-      ...(data.priority !== undefined && { priority: Number(data.priority) }),
-    };
-    const status = this.normBool(data.status);
-    if (status !== undefined) payload.status = status;
-    if (nextFilterTypeId !== undefined) payload.filterTypeId = nextFilterTypeId;
-
-    try {
-      const updated = await this.prisma.filterSet.update({
-        where: { id },
-        data: payload,
-      });
-
-      return {
-        message: 'Filter Set updated successfully',
-        data: updated,
-      };
-    } catch (err: any) {
-      if (err?.code === 'P2003') {
-        throw new BadRequestException('Invalid filterTypeId: foreign key constraint failed');
-      }
-      throw err;
-    }
+    const exists = await this.prisma.filterType.findUnique({ where: { id: parsed } });
+    if (!exists) throw new BadRequestException(`FilterType ${parsed} does not exist (filterTypeId).`);
+    nextFilterTypeId = parsed;
   }
+
+  // ✅ Uniqueness pre-check excluding current row
+  const conflict = await this.prisma.filterSet.findFirst({
+    where: { filterTypeId: nextFilterTypeId, title: nextTitle, NOT: { id } },
+    select: { id: true },
+  });
+  if (conflict) throw new BadRequestException('Title already exists for this Filter Type');
+
+  const payload: any = {
+    ...(data.priority !== undefined && { priority: Number(data.priority) }),
+    ...(data.title !== undefined && { title: nextTitle }),
+    ...(nextFilterTypeId !== current.filterTypeId && { filterTypeId: nextFilterTypeId }),
+  };
+  const status = this.normBool(data.status);
+  if (status !== undefined) payload.status = status;
+
+  try {
+    const updated = await this.prisma.filterSet.update({ where: { id }, data: payload });
+    return { message: 'Filter Set updated successfully', data: updated };
+  } catch (err: any) {
+    if (err?.code === 'P2002') {
+      throw new BadRequestException('Title already exists for this Filter Type');
+    }
+    if (err?.code === 'P2003') {
+      throw new BadRequestException('Invalid filterTypeId: foreign key constraint failed');
+    }
+    throw err;
+  }
+}
 
   /** Delete FilterSet + its FilterLists + ProductFilters */
   async remove(id: number) {

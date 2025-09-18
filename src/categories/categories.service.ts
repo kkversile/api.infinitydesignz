@@ -261,69 +261,87 @@ export class CategoriesService {
     };
   }
 
-  async remove(id: number) {
-    const category = await this.prisma.category.findUnique({
-      where: { id },
-      include: { children: true },
+async remove(id: number) {
+  const category = await this.prisma.category.findUnique({
+    where: { id },
+    include: { children: true },
+  });
+  if (!category) throw new NotFoundException("Category not found");
+
+  // Collect all descendant IDs
+  const collectDescendants = async (categoryId: number): Promise<number[]> => {
+    const children = await this.prisma.category.findMany({
+      where: { parentId: categoryId },
+      select: { id: true },
     });
-    if (!category) throw new NotFoundException("Category not found");
+    const ids = children.map((c) => c.id);
+    for (const child of children) ids.push(...(await collectDescendants(child.id)));
+    return ids;
+  };
 
-    // Recursively collect all descendant category IDs
-    const collectDescendants = async (
-      categoryId: number
-    ): Promise<number[]> => {
-      const children = await this.prisma.category.findMany({
-        where: { parentId: categoryId },
-        select: { id: true },
-      });
-      const ids = children.map((c) => c.id);
+  const descendantIds = await collectDescendants(id);
+  const allCategoryIds = [id, ...descendantIds];
 
-      for (const child of children) {
-        ids.push(...(await collectDescendants(child.id)));
+  // ---- Block if used by PRODUCTS ------------------------------------------------
+  const products = await this.prisma.product.findMany({
+    where: { categoryId: { in: allCategoryIds } },
+    select: { id: true, sku: true, title: true, categoryId: true },
+    take: 10,
+  });
+  if (products.length > 0) {
+    const preview = products
+      .map(p => `#${p.id} (${p.sku}) (${p.title}) → Category #${p.categoryId}`)
+      .join(", ");
+    throw new BadRequestException(
+      `Cannot delete: one or more categories (including children) are assigned to products: ${preview}. Please reassign them first.`
+    );
+  }
+
+  // ---- Collect Home Product Promotions (MPP) to delete -------------------------
+  const mpps = await this.prisma.mainProductPromotion.findMany({
+    where: { categoryId: { in: allCategoryIds } },
+    select: { id: true },
+  });
+  const mppIds = mpps.map(m => m.id);
+
+  try {
+    await this.prisma.$transaction(async (tx) => {
+      // 1) Delete join rows for MPPs
+      if (mppIds.length > 0) {
+        await tx.productMainCategoryPromotion.deleteMany({
+          where: { mainProductPromotionId: { in: mppIds } },
+        });
+        // 2) Delete the MPPs themselves
+        await tx.mainProductPromotion.deleteMany({
+          where: { id: { in: mppIds } },
+        });
       }
 
-      return ids;
-    };
+      // 3) Delete FeaturedCategory cards referencing any category in the subtree
+      await tx.featuredCategory.deleteMany({
+        where: { categoryId: { in: allCategoryIds } },
+      });
 
-    const descendantIds = await collectDescendants(id);
-    const allCategoryIds = [id, ...descendantIds];
-
-    // Check for products assigned to any of the categories
-    const assignedProducts = await this.prisma.product.findMany({
-      where: { categoryId: { in: allCategoryIds } },
-      select: {
-        id: true,
-        sku: true,
-        title: true,
-        categoryId: true,
-      },
-      take: 10,
+      // 4) Delete child categories then the parent
+      if (descendantIds.length > 0) {
+        await tx.category.deleteMany({ where: { id: { in: descendantIds } } });
+      }
+      await tx.category.delete({ where: { id } });
     });
 
-    if (assignedProducts.length > 0) {
-      const preview = assignedProducts
-        .map(
-          (p) => `#${p.id} (${p.sku}) (${p.title}) → Category #${p.categoryId}`
-        )
-        .join(", ");
-
+    return { message: "Category deleted successfully" };
+  } catch (e: any) {
+    if (e?.code === "P2003") {
+      // Any missed FK will land here with a clean 400 instead of a 500
       throw new BadRequestException(
-        ` Cannot delete: One or more categories (including children) are assigned to products: ${preview}. Please reassign them first.`
+        "Cannot delete: this category (or its children) is still referenced by other records. Please detach them and try again."
       );
     }
-
-    // Delete children first (deepest first)
-    for (const childId of descendantIds.reverse()) {
-      await this.prisma.category.delete({ where: { id: childId } });
-    }
-
-    // Delete main category
-    await this.prisma.category.delete({ where: { id } });
-
-    return {
-      message: "Category deleted successfully",
-    };
+    throw e;
   }
+}
+
+
 
   // ✅ returns subcategories flagged for “Need Help Buying”
   async findNeedHelpBuying() {
