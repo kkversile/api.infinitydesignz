@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateMainCategoryPromotionDto } from './dto/create-main-category-promotion.dto';
 import { UpdateMainCategoryPromotionDto } from './dto/update-main-category-promotion.dto';
 import { MAIN_CATEGORY_PROMOTION_IMAGE_PATH } from '../config/constants';
+import { Prisma } from '@prisma/client';
 
 // helpers (camelCase)
 const formatImageUrl = (fileName: string | null) =>
@@ -126,18 +127,33 @@ export class MainCategoryPromotionService {
     }
   }
 
-  async remove(id: number) {
-    try {
-      const exists = await this.prisma.mainCategoryPromotion.findUnique({
-        where: { id },
+  /** Remove MainCategoryPromotion: detach dependents, then delete (transactional) */
+async remove(id: number) {
+  const exists = await this.prisma.mainCategoryPromotion.findUnique({ where: { id } });
+  if (!exists) throw new NotFoundException('Promotion not found.');
+
+  try {
+    await this.prisma.$transaction(async (tx) => {
+      // Delete product join rows first
+      await tx.productMainCategoryPromotion.deleteMany({
+        where: { mainCategoryPromotionId: id },
       });
-      if (!exists) throw new NotFoundException('Promotion not found.');
-      await this.prisma.mainCategoryPromotion.delete({ where: { id } });
-      return { message: 'Home Category Promotion deleted successfully.' };
-    } catch (error: any) {
-      throw new BadRequestException(
-        `Failed to delete Home Category Promotion: ${error.message}`
-      );
-    }
+
+      // Delete product promotions under this main promotion
+      await tx.mainProductPromotion.deleteMany({
+        where: { mainCategoryPromotionId: id },
+      });
+
+      // Finally delete the promotion
+      await tx.mainCategoryPromotion.delete({ where: { id } });
+    });
+
+    return { message: 'Home Category Promotion deleted successfully.' };
+  } catch (e: any) {
+    throw new BadRequestException(
+      `Failed to delete Home Category Promotion: ${e.message}`,
+    );
   }
+}
+
 }

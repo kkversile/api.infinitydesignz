@@ -4,35 +4,50 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class FeatureTypesService {
   constructor(private prisma: PrismaService) {}
 
+  private normalizeName(name: string) {
+    return (name ?? '').trim();
+  }
+
   /** Create FeatureType with name */
   async create(data: { name: string }) {
-    const featureType = await this.prisma.featureType.create({ data });
+    const name = this.normalizeName(data.name);
+    if (!name) throw new BadRequestException('Name is required');
 
-    return {
-      message: 'Feature Type created successfully',
-      data: featureType,
-    };
+    // Pre-check (helps surface a friendly error & avoids obvious dupes)
+    const exists = await this.prisma.featureType.findUnique({ where: { name } });
+    if (exists) throw new BadRequestException('Feature Type name already exists');
+
+    try {
+      const featureType = await this.prisma.featureType.create({ data: { name } });
+      return {
+        message: 'Feature Type created successfully',
+        data: featureType,
+      };
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        // Race condition fallback
+        throw new BadRequestException('Feature Type name already exists');
+      }
+      throw e;
+    }
   }
 
   /** Get all FeatureTypes */
   findAll() {
     return this.prisma.featureType.findMany({
-      orderBy: {
-        id: 'desc',
-      },
+      orderBy: { id: 'desc' },
     });
   }
 
   /** Get one FeatureType by ID */
   async findOne(id: number) {
-    const featureType = await this.prisma.featureType.findUnique({
-      where: { id },
-    });
+    const featureType = await this.prisma.featureType.findUnique({ where: { id } });
     if (!featureType) throw new NotFoundException('Feature Type not found');
     return featureType;
   }
@@ -41,27 +56,39 @@ export class FeatureTypesService {
   async update(id: number, data: any) {
     await this.findOne(id); // ensure exists
 
-    const updated = await this.prisma.featureType.update({
-      where: { id },
-      data,
-    });
+    const payload: any = { ...data };
 
-    return {
-      message: 'Feature Type updated successfully',
-      data: updated,
-    };
+    if (typeof payload.name === 'string') {
+      payload.name = this.normalizeName(payload.name);
+      if (!payload.name) throw new BadRequestException('Name cannot be empty');
+
+      // Prevent renaming to an existing name on a different row
+      const conflict = await this.prisma.featureType.findFirst({
+        where: { name: payload.name, NOT: { id } },
+        select: { id: true },
+      });
+      if (conflict) throw new BadRequestException('Feature Type name already exists');
+    }
+
+    try {
+      const updated = await this.prisma.featureType.update({
+        where: { id },
+        data: payload,
+      });
+      return { message: 'Feature Type updated successfully', data: updated };
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw new BadRequestException('Feature Type name already exists');
+      }
+      throw e;
+    }
   }
 
   /** Remove FeatureType + nested FeatureSets + FeatureLists + ProductFeatures */
   async remove(id: number) {
     //  Step 1: Ensure featureType exists
-    const featureType = await this.prisma.featureType.findUnique({
-      where: { id },
-    });
-
-    if (!featureType) {
-      throw new NotFoundException('Feature Type not found');
-    }
+    const featureType = await this.prisma.featureType.findUnique({ where: { id } });
+    if (!featureType) throw new NotFoundException('Feature Type not found');
 
     //  Step 2: Check if linked to any categories
     const categories = await this.prisma.category.findMany({
@@ -112,12 +139,8 @@ export class FeatureTypesService {
     }
 
     //  Step 8: Delete the FeatureType
-    await this.prisma.featureType.delete({
-      where: { id },
-    });
+    await this.prisma.featureType.delete({ where: { id } });
 
-    return {
-      message: 'Feature Type deleted successfully',
-    };
+    return { message: 'Feature Type deleted successfully' };
   }
 }
