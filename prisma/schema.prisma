@@ -588,6 +588,8 @@ model DeliveryOption {
   description String?
   fee         Float
   days        String
+
+  @@map("deliveryoption")
 }
 
 model OrderItem {
@@ -630,6 +632,8 @@ model PriceRange {
   max   Int? // nullable for "5000+"
 
   coupons Coupon[]
+
+  @@map("pricerange")
 }
 
 model Coupon {
@@ -749,6 +753,7 @@ model ServiceableArea {
   lastMileFee     Int? // in your currency (e.g., INR)
 
   @@index([pincode])
+  @@map("serviceablearea")
 }
 
 model BuyNowItem {
@@ -820,6 +825,7 @@ model FeaturedCategory {
   @@unique([room, categoryId])
   // prevent two cards fighting for the same slot while active (soft rule, but helpful)
   @@index([room, position])
+  @@map("featuredcategory")
 }
 
 enum RoomType {
