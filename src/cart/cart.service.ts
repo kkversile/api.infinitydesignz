@@ -472,8 +472,18 @@ const { fee: shippingFee, formula: shippingFormula } = calculateDeliveryNoSchema
       },
     });
 
+    const orphanedIds = items
+      .filter((item: any) => !item.product)
+      .map((item: any) => item.id);
+
+    if (orphanedIds.length) {
+      await this.prisma.recentlyViewedItem.deleteMany({
+        where: { id: { in: orphanedIds } },
+      });
+    }
+
     return {
-      recentlyViewedItems: items.map((item: any) => {
+      recentlyViewedItems: items.filter((item: any) => item.product).map((item: any) => {
         const useVariant = item.variant !== null;
         const mainImage = useVariant
           ? item.variant?.images?.[0]?.url || item.product?.images?.[0]?.url || null
