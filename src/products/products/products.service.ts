@@ -466,6 +466,7 @@ console.log('incomingWithId',incomingWithId);
     if (toDelete.length) {
       // If you also want to remove their images, do it here before deleteMany.
       // Otherwise, with FK = SET NULL, their images will become variantId = NULL.
+      await tx.recentlyViewedItem.deleteMany({ where: { variantId: { in: toDelete } } });
       await tx.variant.deleteMany({ where: { id: { in: toDelete } } });
     }
   });
@@ -515,6 +516,7 @@ async remove(id: number) {
 
       // Session-like references
       await tx.buyNowItem.deleteMany({ where: { productId: id } });
+      await tx.recentlyViewedItem.deleteMany({ where: { productId: id } });
 
       // Cart & Wishlist
       await tx.cartItem.deleteMany({ where: { productId: id } });
@@ -1019,7 +1021,7 @@ async searchProducts(q: QueryProductsDto) {
 
   // PRODUCT DETAILS + RELATED
 // PRODUCT DETAILS with normalized images but still keeping selectedVariant + variantImages
-async getProductDetails(productId: number, variantId?: number) {
+async getProductDetails(productId: number, variantId?: number, userId?: number) {
   const pct = (mrp: number, sp: number): number => {
     if (!Number.isFinite(mrp) || mrp <= 0) return 0;
     const d = Math.max(0, mrp - sp);
@@ -1122,6 +1124,10 @@ async getProductDetails(productId: number, variantId?: number) {
     variantImages = product.images.filter((img) => img.variantId === variantId);
   }
 
+  if (userId) {
+    await this.recordRecentlyViewed(userId, productId, variantId);
+  }
+
   // shape relatedProducts with badgeDiscountPercent (product vs its variants)
   const relatedProducts = relatedProductsRaw.map((rp: any) => {
     const rpProductPct = pct(rp.mrp, rp.sellingPrice);
@@ -1208,7 +1214,35 @@ const deliveryCharge = product.productDetails?.deliveryCharges ?? null;
   deliveryCharge,
   };
 }
+private async recordRecentlyViewed(userId: number, productId: number, variantId?: number) {
+  const normalizedVariantId = variantId ?? null;
+  const existing = await this.prisma.recentlyViewedItem.findFirst({
+    where: { userId, productId, variantId: normalizedVariantId },
+  });
 
+  if (existing) {
+    await this.prisma.recentlyViewedItem.update({
+      where: { id: existing.id },
+      data: { viewedAt: new Date() },
+    });
+  } else {
+    await this.prisma.recentlyViewedItem.create({
+      data: { userId, productId, variantId: normalizedVariantId },
+    });
+  }
 
+  const oldItems = await this.prisma.recentlyViewedItem.findMany({
+    where: { userId },
+    orderBy: { viewedAt: 'desc' },
+    skip: 20,
+    select: { id: true },
+  });
+
+  if (oldItems.length) {
+    await this.prisma.recentlyViewedItem.deleteMany({
+      where: { id: { in: oldItems.map((item) => item.id) } },
+    });
+  }
+}
 
 }

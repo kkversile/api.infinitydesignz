@@ -11,8 +11,10 @@ import { ProductFiltersService } from './product-filters/product-filters.service
 import { ProductFeaturesController } from './product-features/product-features.controller';
 import { ProductFeaturesService } from './product-features/product-features.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
+  imports: [AuthModule],
   controllers: [
     ProductsController,
     VariantsController,

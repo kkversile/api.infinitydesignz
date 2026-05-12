@@ -447,4 +447,70 @@ const { fee: shippingFee, formula: shippingFormula } = calculateDeliveryNoSchema
       data: await this.getUserCart(userId),
     };
   }
+
+  async getRecentlyViewed(userId: number) {
+    const items = await this.prisma.recentlyViewedItem.findMany({
+      where: { userId },
+      orderBy: { viewedAt: 'desc' },
+      take: 20,
+      include: {
+        product: {
+          include: {
+            images: { where: { isMain: true }, take: 1, select: { url: true, alt: true } },
+            brand: { select: { name: true } },
+            color: { select: { label: true } },
+            size: { select: { title: true } },
+          },
+        },
+        variant: {
+          include: {
+            images: { where: { isMain: true }, take: 1, select: { url: true, alt: true } },
+            color: { select: { label: true } },
+            size: { select: { title: true } },
+          },
+        },
+      },
+    });
+
+    return {
+      recentlyViewedItems: items.map((item: any) => {
+        const useVariant = item.variant !== null;
+        const mainImage = useVariant
+          ? item.variant?.images?.[0]?.url || item.product?.images?.[0]?.url || null
+          : item.product?.images?.[0]?.url || null;
+        const imageAlt = useVariant
+          ? item.variant?.images?.[0]?.alt || item.product?.images?.[0]?.alt || ''
+          : item.product?.images?.[0]?.alt || '';
+
+        const productData = {
+          title: item.product.title,
+          brand: item.product.brand?.name ?? null,
+          price: useVariant ? item.variant?.sellingPrice ?? item.product.sellingPrice : item.product.sellingPrice,
+          mrp: useVariant ? item.variant?.mrp ?? item.product.mrp : item.product.mrp,
+          color: useVariant ? item.variant?.color?.label ?? null : item.product.color?.label ?? null,
+          size: useVariant ? item.variant?.size?.title ?? null : item.product.size?.title ?? null,
+          imageUrl: formatImageUrl(mainImage),
+          imageAlt,
+        };
+
+        return {
+          id: item.id,
+          productId: item.productId,
+          variantId: item.variantId,
+          viewedAt: item.viewedAt,
+          [useVariant ? 'variant' : 'product']: productData,
+        };
+      }),
+    };
+  }
+
+  async removeRecentlyViewed(userId: number, id: number) {
+    const item = await this.prisma.recentlyViewedItem.findUnique({ where: { id } });
+    if (!item || item.userId !== userId) {
+      throw new NotFoundException('Recently viewed item not found or unauthorized');
+    }
+
+    await this.prisma.recentlyViewedItem.delete({ where: { id } });
+    return { message: 'Recently viewed item removed successfully.' };
+  }
 }

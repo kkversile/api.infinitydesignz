@@ -1,5 +1,5 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
   previewFeatures = ["fullTextIndex"]
 }
 
@@ -92,13 +92,14 @@ model Variant {
   sizeId       Int?
   colorId      Int?
 
-  product   Product     @relation(fields: [productId], references: [id])
-  size      SizeUOM?    @relation("VariantSizeRelation", fields: [sizeId], references: [id])
-  color     Color?      @relation("VariantColor", fields: [colorId], references: [id])
-  images    Image[]
-  OrderItem OrderItem[]
-  Wishlist  Wishlist[]
-  CartItem  CartItem[]
+  product             Product              @relation(fields: [productId], references: [id])
+  size                SizeUOM?             @relation("VariantSizeRelation", fields: [sizeId], references: [id])
+  color               Color?               @relation("VariantColor", fields: [colorId], references: [id])
+  images              Image[]
+  OrderItem           OrderItem[]
+  Wishlist            Wishlist[]
+  CartItem            CartItem[]
+  recentlyViewedItems RecentlyViewedItem[]
 
   // NEW: back-relation to Buy Now items
   buyNowItems BuyNowItem[]
@@ -365,11 +366,12 @@ model Product {
   stock          Int
   searchKeywords String?
 
-  variants       Variant[]
-  images         Image[]
-  productDetails ProductDetails?
-  features       ProductFeature[]
-  filters        ProductFilter[]
+  variants            Variant[]
+  images              Image[]
+  productDetails      ProductDetails?
+  features            ProductFeature[]
+  filters             ProductFilter[]
+  recentlyViewedItems RecentlyViewedItem[]
 
   status                 Boolean                        @default(true)
   createdAt              DateTime                       @default(now())
@@ -382,10 +384,9 @@ model Product {
   // NEW: back-relation to Buy Now items
   buyNowItems BuyNowItem[]
 
-  @@map("products")
-
   // 👇 add this (name is optional, but nice to have)
   @@fulltext([title, searchKeywords, description, sku], map: "ft_product_search")
+  @@map("products")
 }
 
 // ─── FEATURE HIERARCHY & JOINS ────────────────────────────────────────────────
@@ -495,7 +496,7 @@ model User {
   id             Int      @id @default(autoincrement())
   name           String?
   email          String?
-  password       String? @db.VarChar(255)
+  password       String?  @db.VarChar(255)
   phone          String   @unique
   role           UserRole @default(CUSTOMER)
   token          String?
@@ -509,11 +510,12 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  orders         Order[]
-  addresses      Address[]
-  appliedCoupons AppliedCoupon[]
-  Wishlist       Wishlist[]
-  CartItem       CartItem[]
+  orders              Order[]
+  addresses           Address[]
+  appliedCoupons      AppliedCoupon[]
+  Wishlist            Wishlist[]
+  CartItem            CartItem[]
+  recentlyViewedItems RecentlyViewedItem[]
 
   // NEW: one-to-one Buy Now item
   buyNowItem BuyNowItem?
@@ -553,26 +555,26 @@ model Address {
 }
 
 model Order {
-  id            Int           @id @default(autoincrement())
-  userId        Int
-  addressId     Int?
-  paymentMethod PaymentMethod
-  couponId      Int?
-  couponDiscount Float        @default(0)
-  status        OrderStatus   @default(PENDING)
-  subtotal      Float
-  shippingFee   Float
-  platformFee   Float?
-  gst           Float
-  totalAmount   Float
-  note          String?
-  orderFrom     String        @default("web") // NEW FIELD
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  id              Int           @id @default(autoincrement())
+  userId          Int
+  addressId       Int?
+  paymentMethod   PaymentMethod
+  couponId        Int?
+  couponDiscount  Float         @default(0)
+  status          OrderStatus   @default(PENDING)
+  subtotal        Float
+  shippingFee     Float
+  platformFee     Float?
+  gst             Float
+  totalAmount     Float
+  note            String?
+  orderFrom       String        @default("web") // NEW FIELD
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
   addressSnapshot Json?
 
   user    User        @relation(fields: [userId], references: [id])
-  address Address? @relation(fields: [addressId], references: [id], onDelete: SetNull)
+  address Address?    @relation(fields: [addressId], references: [id], onDelete: SetNull)
   coupon  Coupon?     @relation(fields: [couponId], references: [id])
   items   OrderItem[]
   payment Payment?
@@ -720,6 +722,22 @@ model CartItem {
   @@map("cart_items")
 }
 
+model RecentlyViewedItem {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  productId Int
+  variantId Int?
+  viewedAt  DateTime @default(now())
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant Variant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, productId, variantId])
+  @@index([userId, viewedAt])
+  @@map("recently_viewed_items")
+}
+
 model ServiceableArea {
   id              Int     @id @default(autoincrement())
   pincode         String  @unique @db.VarChar(6)
@@ -788,7 +806,7 @@ model FeaturedCategory {
   categoryId    Int
   room          RoomType // which top tab/section (LivingRoom, Kitchen, Office, etc.)
   position      Int // 1..N ordering within that room
-  status      Boolean   @default(true)
+  status        Boolean   @default(true)
   titleOverride String? // optional: card title override
   imageOverride String? // optional: custom image for the card
   startsAt      DateTime? // optional scheduling window

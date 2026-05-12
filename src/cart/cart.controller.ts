@@ -26,6 +26,11 @@ export class CartController {
     return this.cartService.getUserCart(req.user.id);
   }
 
+  @Get("recently-viewed")
+  getRecentlyViewed(@Req() req) {
+    return this.cartService.getRecentlyViewed(req.user.id);
+  }
+
   @Post()
   addToCart(@Req() req, @Body() dto: AddToCartDto) {
     return this.cartService.addToCart(req.user.id, dto);
@@ -46,6 +51,11 @@ clearCart(@Req() req) {
   return this.cartService.clearCart(req.user.id);
 }
 
+  @Delete("recently-viewed/:id")
+  removeRecentlyViewed(@Req() req, @Param("id", ParseIntPipe) id: number) {
+    return this.cartService.removeRecentlyViewed(req.user.id, id);
+  }
+
   @Delete(":cartId")
   removeItem(@Req() req, @Param("cartId", ParseIntPipe) cartId: number) {
     return this.cartService.removeFromCart(req.user.id, cartId);
@@ -55,5 +65,4 @@ clearCart(@Req() req) {
   syncCart(@Req() req, @Body() dto: SyncCartDto) {
     return this.cartService.syncGuestCart(req.user.id, dto);
   }
-
 }
