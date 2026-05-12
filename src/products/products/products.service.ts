@@ -17,7 +17,53 @@ import {
 } from '../../config/constants';
 @Injectable()
 export class ProductsService {
+  private readonly NEW_ARRIVAL_DAYS = 30;
+  private readonly TRENDING_LOOKBACK_DAYS = 7;
+  private readonly TRENDING_MIN_VIEWS = 3;
+
   constructor(private readonly prisma: PrismaService) {}
+
+  private getNewArrivalCutoff() {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - this.NEW_ARRIVAL_DAYS);
+    return cutoff;
+  }
+
+  private async getTrendingProductIds(productIds?: number[]) {
+    if (productIds && productIds.length === 0) return new Set<number>();
+
+    const viewedSince = new Date();
+    viewedSince.setDate(viewedSince.getDate() - this.TRENDING_LOOKBACK_DAYS);
+
+    const rows = await this.prisma.recentlyViewedItem.groupBy({
+      by: ['productId'],
+      where: {
+        viewedAt: { gte: viewedSince },
+        ...(productIds?.length ? { productId: { in: productIds } } : {}),
+      },
+      _count: { productId: true },
+      orderBy: { _count: { productId: 'desc' } },
+      take: 50,
+    });
+
+    return new Set(
+      rows
+        .filter((row) => row._count.productId >= this.TRENDING_MIN_VIEWS)
+        .map((row) => row.productId),
+    );
+  }
+
+  private getProductBadgeInfo(product: { id: number; createdAt: Date }, trendingProductIds: Set<number>) {
+    const isNewArrival = product.createdAt >= this.getNewArrivalCutoff();
+    const isTrending = trendingProductIds.has(product.id);
+
+    const badges = [
+      ...(isTrending ? [{ code: 'TRENDING', label: 'Trending' }] : []),
+      ...(isNewArrival ? [{ code: 'NEW_ARRIVAL', label: 'New Arrival' }] : []),
+    ];
+
+    return { isTrending, isNewArrival, badges };
+  }
 
   // CREATE
   async create(dto: CreateProductsDto) {
@@ -175,6 +221,8 @@ if (existingBySku) {
       },
     });
 
+    const trendingProductIds = await this.getTrendingProductIds(products.map((product) => product.id));
+
     return products.map((product) => {
       const category = product.category;
       const parent = category?.parent;
@@ -212,6 +260,7 @@ if (existingBySku) {
         },
         promotions,    // [{id,title}]
         promotionIds,  // [1,2,3]
+        ...this.getProductBadgeInfo(product, trendingProductIds),
       };
     });
   }
@@ -247,6 +296,8 @@ if (existingBySku) {
     });
 
     if (!product) throw new NotFoundException(`Product with ID ${id} not found.`);
+
+    const trendingProductIds = await this.getTrendingProductIds([product.id]);
 
     const category = product.category;
     const parent = category?.parent;
@@ -284,6 +335,7 @@ if (existingBySku) {
       },
       promotions,
       promotionIds,
+      ...this.getProductBadgeInfo(product, trendingProductIds),
     };
   }
 
@@ -790,6 +842,8 @@ async searchProducts(q: QueryProductsDto) {
     });
   }
 
+  const trendingProductIds = await this.getTrendingProductIds(filtered.map((p: any) => p.id));
+
   // --- reshape, attach discount % to variants and choose a badge % per product
   const reshaped = filtered.map((p: any) => {
     const category = p.category;
@@ -858,6 +912,7 @@ async searchProducts(q: QueryProductsDto) {
       productDiscountPercent,
       maxVariantDiscountPercent,
       badgeDiscountPercent, // ← use this for the red badge
+      ...this.getProductBadgeInfo(p, trendingProductIds),
     };
   });
 
@@ -1085,6 +1140,11 @@ async getProductDetails(productId: number, variantId?: number, userId?: number) 
     },
   });
 
+  const trendingProductIds = await this.getTrendingProductIds([
+    product.id,
+    ...relatedProductsRaw.map((rp) => rp.id),
+  ]);
+
   // product-level images
   const productImages = product.images.filter((img) => img.variantId === null);
   const mainProductImage = productImages.find((img) => img.isMain) || null;
@@ -1135,7 +1195,11 @@ async getProductDetails(productId: number, variantId?: number, userId?: number) 
       ? Math.max(...rp.variants.map((vv: any) => pct(vv.mrp, vv.sellingPrice)))
       : 0;
     const rpBadge = Math.max(rpProductPct, rpVarMaxPct);
-    return { ...rp, badgeDiscountPercent: rpBadge };
+    return {
+      ...rp,
+      badgeDiscountPercent: rpBadge,
+      ...this.getProductBadgeInfo(rp, trendingProductIds),
+    };
   });
 
   // ===== Group features by FeatureSet (section -> rows) =====
@@ -1199,6 +1263,7 @@ const deliveryCharge = product.productDetails?.deliveryCharges ?? null;
     productDiscountPercent,
     maxVariantDiscountPercent,
     badgeDiscountPercent,
+    ...this.getProductBadgeInfo(product, trendingProductIds),
 
     // preserve selectedVariant + add images
     selectedVariant: selectedVariant || null,
