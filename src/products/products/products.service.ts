@@ -18,7 +18,7 @@ import {
 @Injectable()
 export class ProductsService {
   private readonly NEW_ARRIVAL_DAYS = 30;
-  private readonly TRENDING_LOOKBACK_DAYS = 7;
+  private readonly TRENDING_LOOKBACK_DAYS = 1;
   private readonly TRENDING_MIN_VIEWS = 3;
 
   constructor(private readonly prisma: PrismaService) {}
