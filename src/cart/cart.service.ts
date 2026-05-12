@@ -514,6 +514,8 @@ const { fee: shippingFee, formula: shippingFormula } = calculateDeliveryNoSchema
     };
   }
 
+  
+
   async removeRecentlyViewed(userId: number, id: number) {
     const item = await this.prisma.recentlyViewedItem.findUnique({ where: { id } });
     if (!item || item.userId !== userId) {
